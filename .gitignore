@@ -1,5 +1,5 @@
 # Model weights / archives — never commit
-models/
+models/*
 !models/.gitkeep
 
 build/
