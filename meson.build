@@ -27,6 +27,7 @@ executable(
   'stt-poc',
   [
     'src/main.vala',
+    'src/stt_engine.vala',
   ],
   dependencies: [
     glib_dep,
@@ -35,6 +36,34 @@ executable(
     gst_dep,
     gst_app_dep,
     sherpa_dep,
+    m_dep,
+  ],
+  vala_args: [
+    '--pkg=posix',
+  ],
+  install: false,
+)
+
+gtk_dep = dependency('gtk4')
+adw_dep = dependency('libadwaita-1')
+
+executable(
+  'stt-gtk-poc',
+  [
+    'src/gtk_main.vala',
+    'src/ComposerInput.vala',
+    'src/ScrolledView.vala',
+    'src/stt_engine.vala',
+  ],
+  dependencies: [
+    glib_dep,
+    gobject_dep,
+    gio_unix_dep,
+    gst_dep,
+    gst_app_dep,
+    sherpa_dep,
+    gtk_dep,
+    adw_dep,
     m_dep,
   ],
   vala_args: [

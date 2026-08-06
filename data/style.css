@@ -1,0 +1,23 @@
+.chat-composer {
+	margin: 8px 12px;
+}
+
+.chat-composer-entry {
+	background: @view_bg_color;
+	border-radius: 6px;
+	padding: 0;
+}
+
+.chat-composer-mic {
+	min-width: 40px;
+}
+
+.chat-composer-spinner {
+	min-width: 16px;
+	min-height: 16px;
+}
+
+textview.chat-input-text {
+	background: transparent;
+	color: @view_fg_color;
+}

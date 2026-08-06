@@ -35,7 +35,8 @@ sudo apt install ./libsherpa-onnx-c-api1_*.deb ./libsherpa-onnx-c-api-dev_*.deb
 ```bash
 ./scripts/fetch-nemotron-model.sh   # default: 560 ms chunk
 meson setup build && ninja -C build
-./build/stt-poc
+./build/stt-poc          # stdout CLI
+./build/stt-gtk-poc      # GTK composer + mic (Ctrl+Shift+Space; Escape to stop)
 ```
 
 Optional longer-context model (same size, higher latency, often more accurate):
@@ -45,6 +46,18 @@ Optional longer-context model (same size, higher latency, often more accurate):
 ./build/stt-poc models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-1120ms-int8-2026-04-25
 ```
 
-## Plan
+## Plans
 
-See [`docs/plans/0.1-vala-sherpa-stdout-poc.md`](docs/plans/0.1-vala-sherpa-stdout-poc.md).
+- Stage 1 (stdout): [`docs/plans/0.1-vala-sherpa-stdout-poc.md`](docs/plans/0.1-vala-sherpa-stdout-poc.md)
+- Stage 2 (GTK composer + mic): [`docs/plans/0.2-vala-gtk-composer-stt.md`](docs/plans/0.2-vala-gtk-composer-stt.md)
+
+## Artificial Intelligence Usage
+
+This project was developed with the assistance of artificial intelligence.
+
+- Product design and code design were done by the author
+- AI’s main role was writing implementation for review
+- Most of the coding was performed by AI
+- Code was then reviewed, revised, and approved by the author
+- Every line of application code was reviewed and approved by the author
+- Limited exceptions apply mainly to the build system
