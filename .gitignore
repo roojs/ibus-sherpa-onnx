@@ -1,0 +1,14 @@
+# Model weights / archives — never commit
+models/
+!models/.gitkeep
+
+build/
+dist/
+*.so
+*.o
+
+# Local-only symlinks into sibling OLLMchat checkout (absolute paths)
+docs/build-rules.md
+docs/coding-standards.md
+docs/coding-standards-router.md
+docs/guide-to-writing-plans.md
