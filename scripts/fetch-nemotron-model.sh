@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Fetch and unpack a Nemotron streaming ASR model into the engine's model tree.
+# Interim fetch helper until in-app Soup download (Phase D). Prefer Preferences;
+# do not expand this script further.
 #
 # Destination is chosen by euid (no MODELS_DIR / env path knobs):
 #   root  → /usr/share/ibus-sherpa-onnx/models/<dir>  + model → that tree

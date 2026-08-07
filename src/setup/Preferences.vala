@@ -33,7 +33,8 @@ namespace IBus.SherpaOnnx.Setup
 		public GLib.HashTable<string, Row> rows =
 			new GLib.HashTable<string, Row>(GLib.str_hash, GLib.str_equal);
 
-		private ModelDownload download = new ModelDownload();
+		private Models models = new Models();
+		private ModelDownload download;
 		private Gtk.Stack stack;
 		private Gtk.Button close_btn;
 
@@ -42,6 +43,7 @@ namespace IBus.SherpaOnnx.Setup
 			Object(application: app, title: "Sherpa ONNX Preferences",
 				resizable: false, default_width: 520, default_height: 560);
 			this.config = Config.load();
+			this.download = new ModelDownload(this.models);
 
 			var page = new Adw.PreferencesPage();
 			var listening = new Adw.PreferencesGroup() { title = "Listening" };

@@ -2,7 +2,7 @@
  * IBus Sherpa ONNX engine process entry.
  *
  * {{{
- *   ./scripts/fetch-nemotron-model.sh
+ *   ./build/ibus-setup-sherpa-onnx   # install / select model
  *   ./build/ibus-engine-sherpa-onnx
  * }}}
  *

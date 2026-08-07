@@ -19,42 +19,34 @@
 namespace IBus.SherpaOnnx.Setup
 {
 	/**
-	 * Fetch or symlink a Nemotron streaming model chunk.
+	 * Download or symlink a Nemotron streaming model chunk.
 	 *
 	 * A vertical box (label, progress, Cancel) shown instead of the prefs page
-	 * while a fetch runs. Download progress is bytes on disk vs an expected
-	 * archive size; extract phase is labeled from the fetch script.
+	 * while Soup download + extract runs. Paths and readiness come from
+	 * {@link Models}.
 	 */
 	public class ModelDownload : Gtk.Box
 	{
-		/** Known chunk sizes offered in prefs (ms). */
-		public int[] chunks = { 560, 1120 };
+		/** Shared model metadata / readiness. */
+		public Models models;
 
-		/** Rough download sizes matching {@link chunks}. */
-		public string[] sizes = { "~430 MB", "~440 MB" };
-
-		/** Files that must exist for a model tree to be usable. */
-		public string[] needed = { "encoder.int8.onnx", "tokens.txt" };
-
-		/** True while a fetch subprocess is running. */
+		/** True while download or extract is running. */
 		public bool busy { get; private set; default = false; }
 
 		private Gtk.Label status_label;
 		private Gtk.ProgressBar status_bar;
 		private Gtk.Button cancel_btn;
-		private GLib.Subprocess proc;
-		private GLib.DataInputStream stdout_reader;
-		private bool have_proc = false;
-		private uint pulse_id = 0;
+		private Soup.Session soup = new Soup.Session();
+		private GLib.Cancellable cancellable = new GLib.Cancellable();
 		private bool was_cancelled = false;
-		private string pending_dir = "";
+		private int pending_chunk = 0;
+		private string pending_name = "";
 		private string pending_system = "";
 		private string archive_path = "";
 		private int64 expect_bytes = 0;
-		private bool extracting = false;
 
 		/**
-		 * Fetch finished. ''ok'' means a complete model is linked.
+		 * Pipeline finished. ''ok'' means a complete model is linked.
 		 */
 		public signal void finished(bool ok, string message);
 
@@ -63,11 +55,13 @@ namespace IBus.SherpaOnnx.Setup
 		 */
 		public signal void cancelled();
 
-		public ModelDownload()
+		public ModelDownload(Models models)
 		{
 			Object(orientation: Gtk.Orientation.VERTICAL, spacing: 12,
 				valign: Gtk.Align.CENTER,
 				margin_start: 24, margin_end: 24, margin_top: 24, margin_bottom: 24);
+			this.models = models;
+			this.soup.timeout = 0;
 			this.status_label = new Gtk.Label("") {
 				xalign = 0, wrap = true, hexpand = true
 			};
@@ -86,43 +80,7 @@ namespace IBus.SherpaOnnx.Setup
 		}
 
 		/**
-		 * True when ''dir'' has every {@link needed} file and a ''.sha256'' stamp
-		 * matching the packaged checksum for that tree. No stamp → not ready.
-		 */
-		public bool ready(string dir)
-		{
-			foreach (var name in this.needed) {
-				if (!GLib.FileUtils.test(GLib.Path.build_filename(dir, name), GLib.FileTest.IS_REGULAR)) {
-					return false;
-				}
-			}
-			var stamp = GLib.Path.build_filename(dir, ".sha256");
-			if (!GLib.FileUtils.test(stamp, GLib.FileTest.IS_REGULAR)) {
-				return false;
-			}
-			var base = GLib.Path.get_basename(dir);
-			var expected = GLib.Path.build_filename("/usr/share/ibus-sherpa-onnx/checksums",
-				base + ".sha256");
-			if (!GLib.FileUtils.test(expected, GLib.FileTest.IS_REGULAR)) {
-				expected = GLib.Path.build_filename(GLib.Environment.get_current_dir(),
-					"data", "checksums", base + ".sha256");
-			}
-			if (!GLib.FileUtils.test(expected, GLib.FileTest.IS_REGULAR)) {
-				return false;
-			}
-			try {
-				string stamp_hash;
-				string expect_hash;
-				GLib.FileUtils.get_contents(stamp, out stamp_hash);
-				GLib.FileUtils.get_contents(expected, out expect_hash);
-				return stamp_hash.strip() == expect_hash.strip().split_set(" \t\n", 2)[0];
-			} catch (GLib.Error err) {
-				return false;
-			}
-		}
-
-		/**
-		 * Link an installed model, or start a fetch if missing.
+		 * Link an installed model, or start Soup download if missing.
 		 *
 		 * @return true if async work started (caller should show this widget)
 		 */
@@ -135,100 +93,47 @@ namespace IBus.SherpaOnnx.Setup
 				return false;
 			}
 
-			var dir = "sherpa-onnx-nemotron-speech-streaming-en-0.6b-%dms-int8-2026-04-25".printf(chunk);
-			var system_path = GLib.Path.build_filename("/usr/share/ibus-sherpa-onnx/models", dir);
-			var user_path = GLib.Path.build_filename(GLib.Environment.get_user_config_dir(),
-				"ibus-sherpa-onnx", "models", dir);
-			if (this.ready(system_path)) {
+			var name = "";
+			int64 expect = 0;
+			for (var i = 0; i < this.models.chunks.length; i++) {
+				if (this.models.chunks[i] != chunk) {
+					continue;
+				}
+				name = this.models.names[i];
+				expect = this.models.archive_bytes[i];
+				break;
+			}
+			var system_path = GLib.Path.build_filename(this.models.system_prefix, "models", name);
+			var user_path = GLib.Path.build_filename(this.models.user_config, "models", name);
+			if (this.models.ready(system_path)) {
 				this.link(system_path);
 				return false;
 			}
-			if (this.ready(user_path)) {
+			if (this.models.ready(user_path)) {
 				this.link(user_path);
 				return false;
 			}
 
 			this.busy = true;
 			this.was_cancelled = false;
-			this.have_proc = false;
-			this.extracting = false;
-			this.pending_dir = dir;
+			this.pending_chunk = chunk;
+			this.pending_name = name;
 			this.pending_system = system_path;
-			this.archive_path = GLib.Path.build_filename(GLib.Environment.get_user_config_dir(),
-				"ibus-sherpa-onnx", "models", dir + ".tar.bz2");
-			// GitHub release Content-Length for these archives (~442.4 MiB).
-			this.expect_bytes = (chunk == 1120) ? (int64) 463945058 : (int64) 463945051;
+			this.expect_bytes = expect;
+			var cache = GLib.Path.build_filename(GLib.Environment.get_user_cache_dir(),
+				"ibus-sherpa-onnx", "download");
+			GLib.DirUtils.create_with_parents(cache, 0755);
+			this.archive_path = GLib.Path.build_filename(cache, name + ".tar.bz2");
 			this.cancel_btn.sensitive = true;
-			this.status_label.label = "Downloading… 0 MB / ~%.0f MB".printf(
-				this.expect_bytes / (1024.0 * 1024.0));
+			this.status_label.label = "Downloading… 0 MB / ~%.0f MB".printf(expect / (1024.0 * 1024.0));
 			this.status_bar.fraction = 0.0;
 			this.status_bar.text = "0%";
-
-			this.pulse_id = GLib.Timeout.add(250, () => {
-				if (!this.busy) {
-					this.pulse_id = 0;
-					return GLib.Source.REMOVE;
-				}
-				if (this.extracting) {
-					this.status_label.label = "Extracting…";
-					this.status_bar.pulse();
-					this.status_bar.text = "";
-					return GLib.Source.CONTINUE;
-				}
-				var size = (int64) 0;
-				try {
-					var info = GLib.File.new_for_path(this.archive_path).query_info(
-						GLib.FileAttribute.STANDARD_SIZE, GLib.FileQueryInfoFlags.NONE);
-					size = info.get_size();
-				} catch (GLib.Error err) {
-				}
-				if (size <= 0) {
-					this.status_label.label = "Downloading… (starting)";
-					this.status_bar.pulse();
-					this.status_bar.text = "";
-					return GLib.Source.CONTINUE;
-				}
-				var frac = (double) size / (double) this.expect_bytes;
-				if (frac > 0.99) {
-					frac = 0.99;
-				}
-				this.status_bar.fraction = frac;
-				this.status_bar.text = "%d%%".printf((int) (frac * 100.0));
-				this.status_label.label = "Downloading… %.0f MB / ~%.0f MB".printf(
-					size / (1024.0 * 1024.0), this.expect_bytes / (1024.0 * 1024.0));
-				return GLib.Source.CONTINUE;
-			});
-
-			var script = "/usr/share/ibus-sherpa-onnx/fetch-nemotron-model.sh";
-			if (!GLib.FileUtils.test(script, GLib.FileTest.IS_EXECUTABLE)) {
-				script = GLib.Path.build_filename(GLib.Environment.get_current_dir(),
-					"scripts", "fetch-nemotron-model.sh");
-			}
-			string[] argv = { script, chunk.to_string() };
-			try {
-				var launcher = new GLib.SubprocessLauncher(
-					GLib.SubprocessFlags.STDOUT_PIPE | GLib.SubprocessFlags.STDERR_MERGE);
-				this.proc = launcher.spawnv(argv);
-				this.have_proc = true;
-				this.stdout_reader = new GLib.DataInputStream(this.proc.get_stdout_pipe());
-				this.read_stdout();
-				this.proc.wait_async.begin(null, this.wait_async);
-			} catch (GLib.Error err) {
-				if (this.pulse_id != 0) {
-					GLib.Source.remove(this.pulse_id);
-					this.pulse_id = 0;
-				}
-				this.busy = false;
-				this.status_label.label = err.message;
-				this.status_bar.fraction = 0.0;
-				this.status_bar.text = "";
-				this.finished(false, err.message);
-			}
+			this.download_archive.begin();
 			return true;
 		}
 
 		/**
-		 * Abort the fetch and emit {@link cancelled}.
+		 * Abort download/extract and emit {@link cancelled}.
 		 */
 		public void cancel()
 		{
@@ -243,112 +148,131 @@ namespace IBus.SherpaOnnx.Setup
 			this.status_label.label = "Cancelling…";
 			this.status_bar.pulse();
 			this.status_bar.text = "";
-			if (this.have_proc) {
-				this.proc.force_exit();
-			}
+			this.cancellable.cancel();
 		}
 
-		/** Remove truncated archive / unpack for the in-flight chunk. */
-		private void discard_partial()
+		/**
+		 * Soup GET {@link archive_path} from k2-fsa ''asr-models'' (''.partial'' resume).
+		 */
+		private async void download_archive()
 		{
-			if (this.pending_dir == "") {
+			if (GLib.FileUtils.test(this.archive_path, GLib.FileTest.IS_REGULAR)) {
+				// Phase D: Archive.Read / WriteDisk extract of this.archive_path into
+				// user/cache staging (not tar subprocess), progress on status_bar,
+				// then .sha256 stamp, polkit move, user model symlink, finished(true).
+				this.complete("Extract not implemented yet (Phase D: libarchive)");
 				return;
 			}
-			var models = GLib.Path.build_filename(GLib.Environment.get_user_config_dir(),
-				"ibus-sherpa-onnx", "models");
-			var dir = GLib.Path.build_filename(models, this.pending_dir);
-			if (GLib.FileUtils.test(dir, GLib.FileTest.IS_DIR) && !this.ready(dir)) {
-				try {
-					string[] argv = { "rm", "-rf", dir };
-					GLib.Process.spawn_sync(null, argv, null, GLib.SpawnFlags.SEARCH_PATH,
-						null, null, null, null);
-				} catch (GLib.Error err) {
-					GLib.warning("cleanup model dir: %s", err.message);
-				}
-			}
-			if (this.archive_path != "" && GLib.FileUtils.test(this.archive_path, GLib.FileTest.IS_REGULAR)) {
-				var size = (int64) 0;
-				try {
-					var info = GLib.File.new_for_path(this.archive_path).query_info(
-						GLib.FileAttribute.STANDARD_SIZE, GLib.FileQueryInfoFlags.NONE);
-					size = info.get_size();
-				} catch (GLib.Error err) {
-				}
-				if (size < this.expect_bytes * 9 / 10) {
-					GLib.FileUtils.remove(this.archive_path);
-				}
-			}
-		}
-
-		private void read_stdout()
-		{
-			this.stdout_reader.read_line_async.begin(GLib.Priority.DEFAULT, null, (obj, res) => {
-				try {
-					var line = this.stdout_reader.read_line_async.end(res);
-					if (line == null) {
-						return;
-					}
-					if (line.has_prefix("Unpacking")) {
-						this.extracting = true;
-						this.status_label.label = "Extracting…";
-						this.status_bar.text = "";
-					} else if (line.has_prefix("Downloading")) {
-						this.extracting = false;
-					} else if (line.has_prefix("Done:") || line.has_prefix("Model already")
-							|| line.has_prefix("User model") || line.has_prefix("System model")) {
-						this.status_label.label = line;
-					}
-					this.read_stdout();
-				} catch (GLib.Error err) {
-				}
-			});
-		}
-
-		private void wait_async(GLib.Object? obj, GLib.AsyncResult res)
-		{
+			this.cancellable = new GLib.Cancellable();
 			try {
-				this.proc.wait_async.end(res);
+				int64 bytes_written = 0;
+				if (GLib.FileUtils.test(this.archive_path + ".partial", GLib.FileTest.IS_REGULAR)) {
+					bytes_written = GLib.File.new_for_path(this.archive_path + ".partial").query_info(
+						GLib.FileAttribute.STANDARD_SIZE, GLib.FileQueryInfoFlags.NONE).get_size();
+				}
+				var msg = new Soup.Message("GET",
+					"https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/%s.tar.bz2"
+						.printf(this.pending_name));
+				if (bytes_written > 0) {
+					msg.request_headers.replace("Range", "bytes=%s-".printf(bytes_written.to_string()));
+				}
+				var input = yield this.soup.send_async(msg, GLib.Priority.DEFAULT, this.cancellable);
+				if (msg.status_code != 200 && msg.status_code != 206) {
+					throw new GLib.IOError.FAILED("HTTP %u", msg.status_code);
+				}
+				int64 total = (int64) msg.response_headers.get_content_length();
+				if (msg.status_code == 206 && total > 0) {
+					total += bytes_written;
+				}
+				if (total <= 0) {
+					total = this.expect_bytes;
+				}
+				GLib.FileOutputStream out_stream;
+				if (bytes_written > 0 && msg.status_code == 206) {
+					out_stream = GLib.File.new_for_path(this.archive_path + ".partial").append_to(
+						GLib.FileCreateFlags.NONE);
+				} else {
+					bytes_written = 0;
+					out_stream = GLib.File.new_for_path(this.archive_path + ".partial").replace(
+						null, false, GLib.FileCreateFlags.NONE);
+				}
+				var buf = new uint8[65536];
+				int64 last_progress_us = 0;
+				while (true) {
+					var n = yield input.read_async(buf, GLib.Priority.DEFAULT, this.cancellable);
+					if (n <= 0) {
+						break;
+					}
+					out_stream.write(buf[0:n]);
+					bytes_written += n;
+					var now = GLib.get_monotonic_time();
+					if (last_progress_us != 0 && now - last_progress_us < 250000) {
+						continue;
+					}
+					last_progress_us = now;
+					var use_total = total > 0 ? total : this.expect_bytes;
+					if (use_total <= 0) {
+						this.status_label.label = "Downloading… %.0f MB".printf(
+							bytes_written / (1024.0 * 1024.0));
+						this.status_bar.pulse();
+						this.status_bar.text = "";
+					} else {
+						var frac = Math.fmin(1.0, (double) bytes_written / (double) use_total);
+						this.status_bar.fraction = frac;
+						this.status_bar.text = "%d%%".printf((int) (frac * 100.0));
+						this.status_label.label = "Downloading… %.0f MB / ~%.0f MB".printf(
+							bytes_written / (1024.0 * 1024.0), use_total / (1024.0 * 1024.0));
+					}
+				}
+				out_stream.close();
+				if (total > 0 && bytes_written != total) {
+					throw new GLib.IOError.FAILED("size mismatch: got %s expected %s",
+						bytes_written.to_string(), total.to_string());
+				}
+				GLib.File.new_for_path(this.archive_path + ".partial").move(
+					GLib.File.new_for_path(this.archive_path), GLib.FileCopyFlags.OVERWRITE);
 			} catch (GLib.Error err) {
-				GLib.warning("fetch: %s", err.message);
+				if (this.was_cancelled || err is GLib.IOError.CANCELLED) {
+					this.complete("");
+					return;
+				}
+				if (GLib.FileUtils.test(this.archive_path + ".partial", GLib.FileTest.IS_REGULAR)) {
+					GLib.FileUtils.remove(this.archive_path + ".partial");
+				}
+				this.complete(err.message);
+				return;
 			}
-			if (this.pulse_id != 0) {
-				GLib.Source.remove(this.pulse_id);
-				this.pulse_id = 0;
-			}
+
+			// Phase D: Archive.Read / WriteDisk extract of this.archive_path into
+			// user/cache staging (not tar subprocess), progress on status_bar,
+			// then .sha256 stamp, polkit move, user model symlink, finished(true).
+			this.complete("Extract not implemented yet (Phase D: libarchive)");
+		}
+
+		/**
+		 * End an unsuccessful pipeline. Empty ''message'' means user cancel;
+		 * otherwise treat as an error and emit {@link finished}.
+		 */
+		private void complete(string message)
+		{
 			this.busy = false;
-			this.have_proc = false;
 			this.cancel_btn.sensitive = true;
-			if (this.was_cancelled) {
+			this.models.discard_partial(this.pending_chunk);
+			this.status_bar.fraction = 0.0;
+			this.status_bar.text = "";
+			this.status_label.label = message;
+			if (message == "") {
 				this.was_cancelled = false;
-				this.discard_partial();
-				this.status_label.label = "";
-				this.status_bar.text = "";
 				this.cancelled();
 				return;
 			}
-			var installed = GLib.Path.build_filename(GLib.Environment.get_user_config_dir(),
-				"ibus-sherpa-onnx", "models", this.pending_dir);
-			if (!this.ready(installed) && !this.ready(this.pending_system)) {
-				this.discard_partial();
-				this.status_label.label = "Download failed. Run the fetch script from a terminal.";
-				this.status_bar.fraction = 0.0;
-				this.status_bar.text = "";
-				this.finished(false, this.status_label.label);
-				return;
-			}
-			this.link(this.ready(this.pending_system) ? this.pending_system : installed);
-			this.status_label.label = "Model ready. Restart the IME if it was running.";
-			this.status_bar.fraction = 1.0;
-			this.status_bar.text = "100%";
-			this.finished(true, this.status_label.label);
+			this.finished(false, message);
 		}
 
 		private void link(string target)
 		{
-			var link_dir = GLib.Path.build_filename(GLib.Environment.get_user_config_dir(),
-				"ibus-sherpa-onnx");
-			GLib.DirUtils.create_with_parents(link_dir, 0755);
-			var link = GLib.File.new_for_path(GLib.Path.build_filename(link_dir, "model"));
+			GLib.DirUtils.create_with_parents(this.models.user_config, 0755);
+			var link = GLib.File.new_for_path(GLib.Path.build_filename(this.models.user_config, "model"));
 			try {
 				if (link.query_exists()) {
 					link.delete();

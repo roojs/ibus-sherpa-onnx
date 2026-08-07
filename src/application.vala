@@ -79,16 +79,15 @@ namespace IBus.SherpaOnnx
 	/**
 	 * ''GLib.Application'' host for the Sherpa ONNX IBus engine.
 	 *
-	 * Model: ''~/.config/ibus-sherpa-onnx/model'' (dir or symlink). Prefs in
+	 * Model path/readiness via {@link Models}. Prefs in
 	 * ''~/.config/ibus-sherpa-onnx/settings.ini'' (KeyFile). ''--debug'' enables
 	 * stderr logging.
 	 *
 	 * == Usage Examples ==
 	 *
-	 * === Fetch model then run unpackaged ===
+	 * === Unpackaged engine (model already installed via Preferences) ===
 	 *
 	 * {{{
-	 *   ./scripts/fetch-nemotron-model.sh
 	 *   ./build/ibus-engine-sherpa-onnx --debug
 	 * }}}
 	 *
@@ -143,53 +142,11 @@ namespace IBus.SherpaOnnx
 		 */
 		public override void activate()
 		{
-			var user_model = GLib.Path.build_filename(
-				GLib.Environment.get_user_config_dir(), "ibus-sherpa-onnx", "model"
-			);
-			var system_model = "/usr/share/ibus-sherpa-onnx/model";
-			var model_dir = user_model;
-			if (GLib.File.new_for_path(user_model).query_file_type(GLib.FileQueryInfoFlags.NONE)
-					!= GLib.FileType.DIRECTORY) {
-				model_dir = system_model;
-			}
-			if (GLib.File.new_for_path(model_dir).query_file_type(GLib.FileQueryInfoFlags.NONE)
-					!= GLib.FileType.DIRECTORY) {
-				GLib.critical(
-					"No model at %s or %s — run fetch-nemotron-model.sh (or sudo for system)",
-					user_model, system_model
-				);
-				GLib.Process.exit(1);
-			}
-			var stamp = GLib.Path.build_filename(model_dir, ".sha256");
-			if (!GLib.FileUtils.test(stamp, GLib.FileTest.IS_REGULAR)) {
-				GLib.critical(
-					"Model at %s has no .sha256 stamp (incomplete or old install). Re-run fetch-nemotron-model.sh.",
-					model_dir
-				);
-				GLib.Process.exit(1);
-			}
-			try {
-				string stamp_hash;
-				GLib.FileUtils.get_contents(stamp, out stamp_hash);
-				var tree = model_dir;
-				if (GLib.FileUtils.test(user_model, GLib.FileTest.IS_SYMLINK) && model_dir == user_model) {
-					tree = GLib.FileUtils.read_link(user_model);
-				}
-				var base = GLib.Path.get_basename(tree);
-				var expected = GLib.Path.build_filename("/usr/share/ibus-sherpa-onnx/checksums",
-					base + ".sha256");
-				if (!GLib.FileUtils.test(expected, GLib.FileTest.IS_REGULAR)) {
-					GLib.critical("No packaged checksum for model %s", base);
-					GLib.Process.exit(1);
-				}
-				string expect_hash;
-				GLib.FileUtils.get_contents(expected, out expect_hash);
-				if (stamp_hash.strip() != expect_hash.strip().split_set(" \t\n", 2)[0]) {
-					GLib.critical("Model checksum mismatch at %s", model_dir);
-					GLib.Process.exit(1);
-				}
-			} catch (GLib.Error err) {
-				GLib.critical("Model checksum check failed: %s", err.message);
+			var models = new Models();
+			var model_dir = models.resolve();
+			if (model_dir == "") {
+				GLib.critical("No ready model at %s/model or %s/model — open Preferences to install one",
+					models.user_config, models.system_prefix);
 				GLib.Process.exit(1);
 			}
 

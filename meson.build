@@ -33,6 +33,7 @@ executable(
     'src/engine.vala',
     'src/transcriber.vala',
     'src/Config.vala',
+    'src/Models.vala',
   ],
   dependencies: [
     glib_dep,
@@ -92,6 +93,7 @@ executable(
 
 gtk_dep = dependency('gtk4')
 adw_dep = dependency('libadwaita-1')
+soup_dep = dependency('libsoup-3.0')
 
 # IBus Preferences / component <setup> (RooTerm Dialog naming: Preferences, Row*).
 executable(
@@ -99,6 +101,7 @@ executable(
   [
     'src/setup/main.vala',
     'src/Config.vala',
+    'src/Models.vala',
     'src/setup/Row.vala',
     'src/setup/RowKeySelect.vala',
     'src/setup/RowSwitch.vala',
@@ -112,6 +115,8 @@ executable(
     gio_unix_dep,
     gtk_dep,
     adw_dep,
+    soup_dep,
+    m_dep,
   ],
   install: true,
   install_dir: get_option('libexecdir'),
