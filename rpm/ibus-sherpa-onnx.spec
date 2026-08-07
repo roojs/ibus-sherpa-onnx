@@ -25,6 +25,7 @@ BuildRequires:  libadwaita-devel
 BuildRequires:  libsoup3-devel
 BuildRequires:  libarchive-devel
 BuildRequires:  libsherpa-onnx-c-api-devel
+BuildRequires:  chrpath
 
 Requires:       ibus
 Requires:       libsherpa-onnx-c-api
@@ -57,6 +58,9 @@ ASR model weights are not included (~440 MB); download via Preferences.
 
 %install
 %meson_install
+# sherpa-onnx.pc injects -Wl,-rpath,/usr/lib; Fedora check-rpaths rejects that.
+chrpath --delete %{buildroot}%{_libexecdir}/ibus-engine-sherpa-onnx || :
+chrpath --delete %{buildroot}%{_libexecdir}/ibus-setup-sherpa-onnx || :
 
 %postun
 if [ "$1" -eq 0 ]; then

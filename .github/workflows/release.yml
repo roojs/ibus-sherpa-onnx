@@ -126,7 +126,7 @@ jobs:
         run: |
           set -euo pipefail
           dnf -y install \
-            rpm-build rpmdevtools \
+            rpm-build rpmdevtools chrpath \
             meson ninja-build gcc pkgconf-pkg-config vala \
             glib2-devel ibus-devel \
             gstreamer1-devel gstreamer1-plugins-base-devel \
@@ -189,6 +189,8 @@ jobs:
           sed -i "s/^Version:[[:space:]]*.*/Version:        ${ver}/" \
             "${topdir}/SPECS/ibus-sherpa-onnx.spec"
 
+          # 0x0001: allow redundant standard RPATHs if chrpath missed one
+          export QA_RPATHS=$(( 0x0001 ))
           rpmbuild -bb \
             --define "_topdir ${topdir}" \
             --define "_smp_ncpus_max 2" \
