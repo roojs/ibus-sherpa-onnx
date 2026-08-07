@@ -1,0 +1,14 @@
+# Changelog
+
+## 0.1.0 - 2026-08-07
+
+- Initial release: IBus speech dictation engine via sherpa-onnx (Nemotron).
+- Preferences (`ibus-setup-sherpa-onnx`): model download, polkit install into
+  `/usr/share/ibus-sherpa-onnx/models/`, user symlink, GNOME IME activation,
+  `ibus restart`.
+- PATH wrapper launches prefs via `gtk-launch` so the window is not buried
+  behind the terminal.
+- Hotkey toggle (default Ctrl+Shift+Space); key pass-through for normal typing
+  and app shortcuts (including Shift+letter).
+- Optional CLI / GTK demos (`-Dcli=true`, `-Dgtk_demo=true`); not packaged.
+- Debian and Fedora packages; model weights are not shipped in the package.

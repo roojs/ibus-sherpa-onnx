@@ -4,7 +4,7 @@ Local streaming speech-to-text as an **IBus** input method, via **sherpa-onnx** 
 
 ## Demo
 
-<video src="https://github.com/user-attachments/assets/21f1c392-2352-4e1a-8833-860ccb753cc4" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/02104d53-0d63-4204-8baa-2e6bfe6a7c2f" controls width="100%"></video>
 
 ## Install
 
@@ -32,6 +32,7 @@ Focus a text field and toggle with **Ctrl+Shift+Space**. Super+Space switches aw
 
 ```bash
 sudo dpkg -r ibus-sherpa-onnx   # uninstall
+ibus restart                    # drop the running engine from the session
 ```
 
 Model weights are not in the `.deb`. Settings: `~/.config/ibus-sherpa-onnx/settings.ini`.

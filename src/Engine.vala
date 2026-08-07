@@ -181,25 +181,9 @@ namespace IBus.SherpaOnnx
 				this.update_listening(false, false);
 			}
 
-			// Ctrl/Alt/Super combos: let the client handle (VTE Ctrl+C, etc.).
-			var app_mods = state & (IBus.ModifierType.CONTROL_MASK | IBus.ModifierType.MOD1_MASK
-				| IBus.ModifierType.SUPER_MASK | IBus.ModifierType.META_MASK
-				| IBus.ModifierType.HYPER_MASK);
-			if (app_mods != 0) {
-				return false;
-			}
-
-			// Enter / Backspace / arrows / Delete: return false so VTE indexes them.
-			// forward_key_event often leaves terminals stuck; GNOME Text Editor still
-			// gets these via the normal client path.
-			var ch = IBus.keyval_to_unicode(keyval);
-			if (ch == 0 || (!ch.isgraph() && ch != ' ')) {
-				return false;
-			}
-
-			// Printable typing (Shift OK for capitals): forward for GNOME clients.
-			this.forward_key_event(keyval, keycode, state);
-			return true;
+			// Everything else (Shift+A, Ctrl+C, Enter, …): pass through to the client.
+			// Do not forward_key_event — that drops or mishandles modifiers.
+			return false;
 		}
 
 		public override void disable()

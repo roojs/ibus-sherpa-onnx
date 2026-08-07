@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = remove ] || [ "$1" = purge ]; then
+	echo "ibus-sherpa-onnx: run 'ibus restart' (or log out) so the session drops the engine."
+fi
+
+#DEBHELPER#

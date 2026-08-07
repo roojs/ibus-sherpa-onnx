@@ -116,7 +116,8 @@ sudo dpkg -i ../ibus-sherpa-onnx_*.deb
 What the `.deb` ships (see `meson.build` `install:`):
 
 - `/usr/libexec/ibus-engine-sherpa-onnx`
-- `/usr/libexec/ibus-setup-sherpa-onnx`
+- `/usr/libexec/ibus-setup-sherpa-onnx` (prefs binary)
+- `/usr/bin/ibus-setup-sherpa-onnx` (wrapper → `gtk-launch`)
 - IBus component XML, setup `.desktop`, fetch script, checksums, empty `models/` dir
 
 Sideline demos are off by default and **not** in the package (`install: false`).

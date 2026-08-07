@@ -32,7 +32,8 @@ Depends: ${shlibs:Depends},
          gstreamer1.0-plugins-base,
          gstreamer1.0-pipewire | gstreamer1.0-pulseaudio,
          pkexec,
-         polkitd
+         polkitd,
+         libgtk-3-bin
 Description: IBus speech dictation engine using sherpa-onnx
  Local streaming speech-to-text as an IBus input method, powered by
  sherpa-onnx (Nemotron online transducer).

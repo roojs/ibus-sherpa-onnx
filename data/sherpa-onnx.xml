@@ -21,7 +21,7 @@
 			<description>Local speech-to-text dictation</description>
 			<!-- Panel badge: not "en" (language alone). Idle vs listening updated at runtime. -->
 			<symbol>voi</symbol>
-			<setup>/usr/libexec/ibus-setup-sherpa-onnx</setup>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
 			<rank>0</rank>
 		</engine>
 	</engines>
