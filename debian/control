@@ -13,6 +13,8 @@ Build-Depends: debhelper-compat (= 13),
                libgstreamer-plugins-base1.0-dev,
                libgtk-4-dev,
                libadwaita-1-dev,
+               libsoup-3.0-dev,
+               libarchive-dev,
                libsherpa-onnx-c-api-dev
 Standards-Version: 4.6.2
 Homepage: https://github.com/roojs/gtk-speechtotext-poc
@@ -28,12 +30,15 @@ Depends: ${shlibs:Depends},
          libsherpa-onnx-c-api1,
          gstreamer1.0-plugins-good,
          gstreamer1.0-plugins-base,
-         gstreamer1.0-pipewire | gstreamer1.0-pulseaudio
+         gstreamer1.0-pipewire | gstreamer1.0-pulseaudio,
+         pkexec,
+         polkitd
 Description: IBus speech dictation engine using sherpa-onnx
  Local streaming speech-to-text as an IBus input method, powered by
  sherpa-onnx (Nemotron online transducer).
  .
- Install this package, open IME Preferences (or run ibus-setup-sherpa-onnx)
- to pick a model and options, then ibus restart / add the IME (see README).
+ Install this package, then run ibus-setup-sherpa-onnx to pick a model.
+ Preferences downloads/extracts the model, installs it under
+ /usr/share/ibus-sherpa-onnx/models/ via polkit, and activates the IME.
  .
- ASR model weights are not included; download via Preferences or the fetch script.
+ ASR model weights are not included (~440 MB); download via Preferences.

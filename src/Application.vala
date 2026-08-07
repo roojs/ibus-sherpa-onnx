@@ -122,6 +122,11 @@ namespace IBus.SherpaOnnx
 			GLib.Log.set_default_handler((dom, lvl, msg) => {
 				debug_log("ibus-sherpa-onnx", dom != null ? dom : "", lvl, msg);
 			});
+			var open_prefs = new GLib.SimpleAction("open-preferences", null);
+			open_prefs.activate.connect(() => {
+				this.launch_preferences();
+			});
+			this.add_action(open_prefs);
 		}
 
 		/**
@@ -135,7 +140,7 @@ namespace IBus.SherpaOnnx
 		}
 
 		/**
-		 * Load model, attach to ibus-daemon, hold the loop.
+		 * Attach to ibus-daemon (model optional — toggle notifies if missing).
 		 *
 		 * With ''--ibus'' (packaged path): factory + {@link IBus.Bus.request_name}.
 		 * Without: runtime {@link IBus.Bus.register_component} for unpackaged smoke tests.
@@ -144,21 +149,20 @@ namespace IBus.SherpaOnnx
 		{
 			var models = new Models();
 			var model_dir = models.resolve();
-			if (model_dir == "") {
-				GLib.critical("No ready model at %s/model or %s/model — open Preferences to install one",
-					models.user_config, models.system_prefix);
-				GLib.Process.exit(1);
+			Engine.transcriber = null;
+			if (model_dir != "") {
+				GLib.debug("Loading model: %s", model_dir);
+				try {
+					Engine.transcriber = new Transcriber(model_dir);
+				} catch (GLib.Error err) {
+					GLib.critical("%s", err.message);
+					Engine.transcriber = null;
+				}
+			} else {
+				GLib.debug("No ready model yet — engine idle until Preferences install");
 			}
 
 			IBus.init();
-
-			GLib.debug("Loading model: %s", model_dir);
-			try {
-				Engine.transcriber = new Transcriber(model_dir);
-			} catch (GLib.Error err) {
-				GLib.critical("%s", err.message);
-				GLib.Process.exit(1);
-			}
 
 			Engine.config = Config.load();
 			Engine.bind_hotkey();
@@ -208,6 +212,31 @@ namespace IBus.SherpaOnnx
 			GLib.debug("Registered sherpa-onnx (unpackaged). Toggle=%s",
 				Engine.config.key_file.get_string("general", "hotkey"));
 			this.hold();
+		}
+
+		/**
+		 * Launch ''ibus-setup-sherpa-onnx'' (desktop file, then libexec / PATH).
+		 */
+		private void launch_preferences()
+		{
+			try {
+				var info = new GLib.DesktopAppInfo("ibus-setup-sherpa-onnx.desktop");
+				if (info != null) {
+					info.launch(null, null);
+					return;
+				}
+			} catch (GLib.Error err) {
+				GLib.debug("desktop launch prefs: %s", err.message);
+			}
+			string[] argv = { "/usr/libexec/ibus-setup-sherpa-onnx" };
+			if (!GLib.FileUtils.test(argv[0], GLib.FileTest.IS_EXECUTABLE)) {
+				argv[0] = "ibus-setup-sherpa-onnx";
+			}
+			try {
+				GLib.Process.spawn_async(null, argv, null, GLib.SpawnFlags.SEARCH_PATH, null, null);
+			} catch (GLib.Error err) {
+				GLib.warning("launch Preferences: %s", err.message);
+			}
 		}
 	}
 }

@@ -88,10 +88,7 @@ namespace IBus.SherpaOnnx.Setup
 				if (!ok) {
 					return;
 				}
-				GLib.Timeout.add(800, () => {
-					this.destroy();
-					return GLib.Source.REMOVE;
-				});
+				this.restart_ibus();
 			});
 			this.download.cancelled.connect(() => {
 				this.show_page("prefs");
@@ -150,10 +147,64 @@ namespace IBus.SherpaOnnx.Setup
 
 			var chunk = ((RowSelect) this.rows.get("model")).selected_chunk();
 			if (!this.download.apply(chunk)) {
+				if (chunk != 0) {
+					this.restart_ibus();
+					return true;
+				}
 				return false;
 			}
 			this.show_page("download");
 			return true;
+		}
+
+		/**
+		 * Make Sherpa the active GNOME IME, ''ibus restart'', close.
+		 */
+		private void restart_ibus()
+		{
+			this.install();
+			try {
+				GLib.Process.spawn_async(null, { "ibus", "restart" }, null,
+					GLib.SpawnFlags.SEARCH_PATH, null, null);
+			} catch (GLib.Error err) {
+				GLib.warning("ibus restart: %s", err.message);
+			}
+			this.destroy();
+		}
+
+		/**
+		 * Install Sherpa as the active GNOME IME: add to input sources if needed
+		 * and set ''current'' so the user does not hunt in Settings.
+		 * Component XML still supplies language/layout (''en'' / ''us'').
+		 */
+		private void install()
+		{
+			var schema = GLib.SettingsSchemaSource.get_default().lookup(
+				"org.gnome.desktop.input-sources", true);
+			if (schema == null) {
+				return;
+			}
+			var settings = new GLib.Settings.full(schema, null, null);
+			if (schema.has_key("show-all-sources")) {
+				settings.set_boolean("show-all-sources", true);
+			}
+			var builder = new GLib.VariantBuilder(new GLib.VariantType("a(ss)"));
+			var index = -1, i = 0;
+			string typ, name;
+			var iter = settings.get_value("sources").iterator();
+			while (iter.next("(ss)", out typ, out name)) {
+				builder.add("(ss)", typ, name);
+				if (typ == "ibus" && name == "sherpa-onnx") {
+					index = i;
+				}
+				i++;
+			}
+			if (index < 0) {
+				builder.add("(ss)", "ibus", "sherpa-onnx");
+				index = i;
+				settings.set_value("sources", builder.end());
+			}
+			settings.set_uint("current", (uint) index);
 		}
 	}
 }

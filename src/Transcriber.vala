@@ -45,7 +45,6 @@ namespace IBus.SherpaOnnx
 		private global::SherpaOnnx.OnlineRecognizer recognizer;
 		private global::SherpaOnnx.OnlineStream stream;
 		private Gst.Pipeline pipeline;
-		private string last_text = "";
 		private string pending_partial = "";
 		private bool partial_idle_queued = false;
 		private int partial_updates = 0;
@@ -54,6 +53,9 @@ namespace IBus.SherpaOnnx
 
 		/** True while the capture pipeline is PLAYING. */
 		public bool listening { get; private set; default = false; }
+
+		/** Current unfinished hypothesis (empty when idle or after endpoint/stop). */
+		public string last_text { get; private set; default = ""; }
 
 		/** Token count from the last endpoint (for CLI --stats). */
 		public int last_token_count { get; private set; default = 0; }

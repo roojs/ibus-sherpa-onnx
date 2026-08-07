@@ -58,9 +58,28 @@ install_data(
 )
 
 install_data(
-  'scripts/fetch-nemotron-model.sh',
+  'scripts/cli-fetch-nemotron-model.sh',
   install_dir: get_option('datadir') / 'ibus-sherpa-onnx',
   install_mode: 'rwxr-xr-x',
+)
+
+libexec_abs = get_option('prefix') / get_option('libexecdir')
+
+install_data(
+  'scripts/install-model.sh',
+  rename: 'ibus-sherpa-onnx-install-model',
+  install_dir: get_option('libexecdir'),
+  install_mode: 'rwxr-xr-x',
+)
+
+policy_conf = configuration_data()
+policy_conf.set('LIBEXECDIR', libexec_abs)
+configure_file(
+  input: 'data/polkit/org.roojs.ibus-sherpa-onnx.policy.in',
+  output: 'org.roojs.ibus-sherpa-onnx.policy',
+  configuration: policy_conf,
+  install: true,
+  install_dir: get_option('datadir') / 'polkit-1' / 'actions',
 )
 
 install_data(

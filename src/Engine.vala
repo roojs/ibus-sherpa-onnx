@@ -29,8 +29,8 @@ namespace IBus.SherpaOnnx
 	 */
 	public class Engine : IBus.Engine
 	{
-		/** Process-wide recognizer + mic (set by {@link Application}). */
-		public static Transcriber transcriber;
+		/** Process-wide recognizer + mic (set by {@link Application}; null if no model). */
+		public static Transcriber? transcriber;
 
 		/** Process-wide prefs (''settings.ini''); set by {@link Application} / {@link focus_in}. */
 		public static Config config = new Config();
@@ -58,8 +58,11 @@ namespace IBus.SherpaOnnx
 			this.props = new IBus.PropList();
 			this.props.append(this.prop);
 
+			if (Engine.transcriber == null) {
+				return;
+			}
 			Engine.transcriber.partial.connect((text) => {
-				if (!Engine.transcriber.listening) {
+				if (Engine.transcriber == null || !Engine.transcriber.listening) {
 					return;
 				}
 				this.saw_partial = true;
@@ -69,7 +72,7 @@ namespace IBus.SherpaOnnx
 				this.update_preedit_text(new IBus.Text.from_string(text), (uint) text.length, true);
 			});
 			Engine.transcriber.endpoint.connect((text) => {
-				if (!Engine.transcriber.listening) {
+				if (Engine.transcriber == null || !Engine.transcriber.listening) {
 					return;
 				}
 				this.saw_partial = false;
@@ -93,6 +96,18 @@ namespace IBus.SherpaOnnx
 			base.focus_in();
 			Engine.config = Config.load();
 			Engine.bind_hotkey();
+		}
+
+		/**
+		 * Client reset (e.g. Gtk.IMContext.reset on submit): stop listening if on.
+		 * Most apps never call this; cooperating apps can.
+		 */
+		public override void reset()
+		{
+			if (Engine.transcriber != null && Engine.transcriber.listening) {
+				this.update_listening(false, false);
+			}
+			base.reset();
 		}
 
 		/**
@@ -130,8 +145,9 @@ namespace IBus.SherpaOnnx
 			if (prop_name != "listening") {
 				return;
 			}
-			this.toggle_listening();
-		}
+			var on = Engine.transcriber == null || !Engine.transcriber.listening;
+			this.update_listening(on, true);
+…		}
 
 		public override bool process_key_event(uint keyval, uint keycode, uint state)
 		{
@@ -143,8 +159,26 @@ namespace IBus.SherpaOnnx
 				| IBus.ModifierType.MOD1_MASK | IBus.ModifierType.SUPER_MASK
 				| IBus.ModifierType.META_MASK | IBus.ModifierType.HYPER_MASK);
 			if (keyval == Engine.toggle_keyval && mods == Engine.toggle_mods) {
-				this.toggle_listening();
+				var on = Engine.transcriber == null || !Engine.transcriber.listening;
+				this.update_listening(on, true);
 				return true;
+			}
+
+			// Pure modifiers must not interrupt listening.
+			if (keyval == IBus.Shift_L || keyval == IBus.Shift_R
+					|| keyval == IBus.Control_L || keyval == IBus.Control_R
+					|| keyval == IBus.Alt_L || keyval == IBus.Alt_R
+					|| keyval == IBus.Meta_L || keyval == IBus.Meta_R
+					|| keyval == IBus.Super_L || keyval == IBus.Super_R
+					|| keyval == IBus.Hyper_L || keyval == IBus.Hyper_R
+					|| keyval == IBus.ISO_Level3_Shift || keyval == IBus.Caps_Lock
+					|| keyval == IBus.Num_Lock || keyval == IBus.Scroll_Lock) {
+				return false;
+			}
+
+			// While listening, any real key stops + commits, then the key is delivered.
+			if (Engine.transcriber != null && Engine.transcriber.listening) {
+				this.update_listening(false, false);
 			}
 
 			// Ctrl/Alt/Super combos: let the client handle (VTE Ctrl+C, etc.).
@@ -155,36 +189,80 @@ namespace IBus.SherpaOnnx
 				return false;
 			}
 
-			// Plain typing (Shift OK for capitals): forward so GNOME clients receive keys.
+			// Enter / Backspace / arrows / Delete: return false so VTE indexes them.
+			// forward_key_event often leaves terminals stuck; GNOME Text Editor still
+			// gets these via the normal client path.
+			var ch = IBus.keyval_to_unicode(keyval);
+			if (ch == 0 || (!ch.isgraph() && ch != ' ')) {
+				return false;
+			}
+
+			// Printable typing (Shift OK for capitals): forward for GNOME clients.
 			this.forward_key_event(keyval, keycode, state);
 			return true;
 		}
 
 		public override void disable()
 		{
-			if (Engine.transcriber.listening) {
-				Engine.transcriber.stop();
+			if (Engine.transcriber != null && Engine.transcriber.listening) {
+				this.update_listening(false, false);
+				return;
 			}
 			this.update_ui();
 		}
 
-		private void toggle_listening()
+		/**…
+		 * Start or stop the mic. Stopping commits {@link Transcriber.last_text}
+		 * when a real partial was shown.
+		 *
+		 * @param listening desired mic state
+		 * @param notify emit the listening desktop notification
+		 */
+		private void update_listening(bool listening, bool notify).
 		{
-			if (Engine.transcriber.listening) {
-				GLib.debug("toggle OFF (has_focus=%s)", this.has_focus.to_string());
-				Engine.transcriber.stop();
-			} else {
-				GLib.debug("toggle ON (has_focus=%s)", this.has_focus.to_string());
-				Engine.transcriber.start();
+			if (Engine.transcriber == null) {
+				if (listening) {
+					this.notify_no_model();
+				}
+				return;
 			}
-			this.update_ui();
-			this.maybe_notify_toggle();
+			if (listening == Engine.transcriber.listening) {
+				return;
+			}
+			if (listening) {
+				GLib.debug("listening ON (has_focus=%s)", this.has_focus.to_string());
+				Engine.transcriber.start();
+				this.update_ui();
+				if (notify) {
+					this.maybe_notify_toggle();
+				}
+				return;
+			}
+
+			GLib.debug("listening OFF (has_focus=%s)", this.has_focus.to_string());
+			var pending = this.saw_partial ? Engine.transcriber.last_text : "";
+			Engine.transcriber.stop();
+			this.stop_preedit_animation();
+			this.saw_partial = false;
+			if (pending != "") {
+				this.commit_text(new IBus.Text.from_string(pending + " "));
+			}
+			this.update_preedit_text(new IBus.Text.from_string(""), 0, false);
+			this.hide_preedit_text();
+			this.prop.set_label(new IBus.Text.from_string("Mic off"));
+			this.prop.set_symbol(new IBus.Text.from_string("voi"));
+			this.prop.set_icon("microphone-sensitivity-muted");
+			this.prop.set_state(IBus.PropState.UNCHECKED);
+			this.update_property(this.prop);
+			if (notify) {
+				this.maybe_notify_toggle();
+			}
 		}
 
 		/** Panel label/symbol + preedit hint from current mic state. */
 		private void update_ui()
 		{
-			if (Engine.transcriber.listening) {
+			if (Engine.transcriber != null && Engine.transcriber.listening) {
 				this.prop.set_label(new IBus.Text.from_string("Listening…"));
 				this.prop.set_symbol(new IBus.Text.from_string("…"));
 				this.prop.set_icon("audio-input-microphone");
@@ -201,7 +279,8 @@ namespace IBus.SherpaOnnx
 			this.prop.set_symbol(new IBus.Text.from_string("voi"));
 			this.prop.set_icon("microphone-sensitivity-muted");
 			this.prop.set_state(IBus.PropState.UNCHECKED);
-			this.hide_preedit_text();
+			this.update_preedit_text(new IBus.Text.from_string(""), 0, false);
+..			this.hide_preedit_text();
 			this.update_property(this.prop);
 		}
 
@@ -217,7 +296,7 @@ namespace IBus.SherpaOnnx
 			this.anim_phase = 0;
 			this.show_anim_preedit();
 			this.anim_source = GLib.Timeout.add(400, () => {
-				if (!Engine.transcriber.listening || this.saw_partial) {
+				if (Engine.transcriber == null || !Engine.transcriber.listening || this.saw_partial) {
 					this.anim_source = 0;
 					return GLib.Source.REMOVE;
 				}
@@ -259,16 +338,33 @@ namespace IBus.SherpaOnnx
 				return;
 			}
 			var app = GLib.Application.get_default();
-			if (app == null) {
+			if (app == null || Engine.transcriber == null) {
 				return;
 			}
 			var note = new GLib.Notification("Sherpa ONNX");
 			if (Engine.transcriber.listening) {
 				note.set_body("Listening…");
 			} else {
-				note.set_body("Mic off");
+				note.set_body("Mic off");..
 			}
 			app.send_notification("sherpa-onnx-listening", note);
+		}
+
+		/**.
+		 * Always notify when the user tries to dictate with no model (not gated
+		 * by the listening-notifications pref). Action opens Preferences.
+		 */
+		private void notify_no_model()
+		{
+			var app = GLib.Application.get_default();
+			if (app == null) {
+				return;
+			}
+			var note = new GLib.Notification("Sherpa ONNX");
+			note.set_body("No speech model installed");
+			note.set_default_action("app.open-preferences");
+			note.add_button("Open Preferences", "app.open-preferences");
+			app.send_notification("sherpa-onnx-no-model", note);
 		}
 	}
 }

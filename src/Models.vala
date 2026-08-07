@@ -159,25 +159,20 @@ namespace IBus.SherpaOnnx
 		}
 
 		/**
-		 * Resolved path of the active ready model (user symlink, else system).
+		 * Active ready model: user ''model'' symlink, else auto-link the largest
+		 * ready tree under system ''models/'' (user ''models/'' is download staging only).
 		 *
 		 * @return absolute model tree path, or "" if none is ready
 		 */
 		public string resolve()
 		{
-			string[] candidates = {
-				GLib.Path.build_filename(this.user_config, "model"),
-				GLib.Path.build_filename(this.system_prefix, "model")
-			};
-			foreach (var candidate in candidates) {
-				if (GLib.File.new_for_path(candidate).query_file_type(GLib.FileQueryInfoFlags.NONE)
-						!= GLib.FileType.DIRECTORY) {
-					continue;
-				}
-				var path = candidate;
+			var link = GLib.Path.build_filename(this.user_config, "model");
+			if (GLib.File.new_for_path(link).query_file_type(GLib.FileQueryInfoFlags.NONE)
+					== GLib.FileType.DIRECTORY) {
+				var path = link;
 				try {
-					if (GLib.FileUtils.test(candidate, GLib.FileTest.IS_SYMLINK)) {
-						path = GLib.FileUtils.read_link(candidate);
+					if (GLib.FileUtils.test(link, GLib.FileTest.IS_SYMLINK)) {
+						path = GLib.FileUtils.read_link(link);
 					}
 				} catch (GLib.FileError err) {
 				}
@@ -185,7 +180,33 @@ namespace IBus.SherpaOnnx
 					return path;
 				}
 			}
-			return "";
+
+			var best = "";
+			var best_bytes = (int64) 0;
+			for (var i = 0; i < this.names.length; i++) {
+				var candidate = GLib.Path.build_filename(this.system_prefix, "models", this.names[i]);
+				if (!this.ready(candidate) || this.archive_bytes[i] <= best_bytes) {
+					continue;
+				}
+				best_bytes = this.archive_bytes[i];
+				best = candidate;
+			}
+			if (best == "") {
+				return "";
+			}
+			GLib.DirUtils.create_with_parents(this.user_config, 0755);
+			var link_file = GLib.File.new_for_path(link);
+			try {
+				if (link_file.query_exists()) {
+					link_file.delete();
+				}
+				link_file.make_symbolic_link(best);
+			} catch (GLib.Error err) {
+				GLib.warning("auto-link model: %s", err.message);
+				return best;
+			}
+			GLib.debug("Auto-linked %s -> %s", link, best);
+			return best;
 		}
 
 		/**
@@ -211,18 +232,18 @@ namespace IBus.SherpaOnnx
 			if (name == "") {
 				return;
 			}
-			var dir = GLib.Path.build_filename(this.user_config, "models", name);
-			if (GLib.FileUtils.test(dir, GLib.FileTest.IS_DIR) && !this.ready(dir)) {
+			var cache = GLib.Path.build_filename(GLib.Environment.get_user_cache_dir(),
+				"ibus-sherpa-onnx", "download");
+			var staged = GLib.Path.build_filename(cache, name);
+			if (GLib.FileUtils.test(staged, GLib.FileTest.IS_DIR) && !this.ready(staged)) {
 				try {
-					string[] argv = { "rm", "-rf", dir };
+					string[] argv = { "rm", "-rf", staged };
 					GLib.Process.spawn_sync(null, argv, null, GLib.SpawnFlags.SEARCH_PATH,
 						null, null, null, null);
 				} catch (GLib.Error err) {
-					GLib.warning("cleanup model dir: %s", err.message);
+					GLib.warning("cleanup staged model: %s", err.message);
 				}
 			}
-			var cache = GLib.Path.build_filename(GLib.Environment.get_user_cache_dir(),
-				"ibus-sherpa-onnx", "download");
 			var archive = GLib.Path.build_filename(cache, name + ".tar.bz2");
 			if (GLib.FileUtils.test(archive + ".partial", GLib.FileTest.IS_REGULAR)) {
 				GLib.FileUtils.remove(archive + ".partial");

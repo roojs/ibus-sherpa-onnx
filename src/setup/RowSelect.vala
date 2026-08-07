@@ -57,14 +57,11 @@ namespace IBus.SherpaOnnx.Setup
 			this.chunk_rows = new Adw.ActionRow[models.chunks.length];
 			for (var i = 0; i < models.chunks.length; i++) {
 				var chunk = models.chunks[i];
-				var subtitle = models.sizes[i];
 				var system_dir = GLib.Path.build_filename(models.system_prefix,
 					"models", models.names[i]);
-				var user_dir = GLib.Path.build_filename(models.user_config,
-					"models", models.names[i]);
-				if (models.ready(system_dir) || models.ready(user_dir)) {
-					subtitle += " · installed";
-				}
+				var subtitle = models.sizes[i] + (models.ready(system_dir)
+					? " · installed"
+					: " · needs downloading");
 				var btn = new Gtk.CheckButton() { group = this.none_btn };
 				this.chunk_btns[i] = btn;
 				this.chunk_rows[i] = new Adw.ActionRow() {

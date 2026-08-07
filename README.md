@@ -2,8 +2,6 @@
 
 Local streaming speech-to-text as an **IBus** input method, via **sherpa-onnx** (Nemotron).
 
-Plan: [`docs/plans/0.3-vala-ibus-sherpa-onnx.md`](docs/plans/0.3-vala-ibus-sherpa-onnx.md).
-
 ## Demo
 
 <video src="https://github.com/user-attachments/assets/21f1c392-2352-4e1a-8833-860ccb753cc4" controls width="100%"></video>
@@ -12,64 +10,33 @@ Plan: [`docs/plans/0.3-vala-ibus-sherpa-onnx.md`](docs/plans/0.3-vala-ibus-sherp
 
 Use **`dpkg -i`** for local `.deb` files (not `apt install …/path.deb`).
 
-1. [libsherpa-onnx](https://github.com/roojs/sherpa-onnx/releases) runtime:
+1. Runtime from [libsherpa-onnx releases](https://github.com/roojs/sherpa-onnx/releases):
 
 ```bash
 sudo dpkg -i libsherpa-onnx-c-api1_*.deb
 ```
 
-2. This engine (after build, the package is `../ibus-sherpa-onnx_*.deb`):
+2. This engine from [ibus-sherpa-onnx releases](https://github.com/roojs/gtk-speechtotext-poc/releases) (or a `.deb` you were given):
 
 ```bash
-sudo dpkg -i ../ibus-sherpa-onnx_*.deb
-
-# User install (default): ~/.config/ibus-sherpa-onnx/model
-./scripts/fetch-nemotron-model.sh
-# Or system-wide: sudo ./scripts/fetch-nemotron-model.sh
-#   → /usr/share/ibus-sherpa-onnx/model
-
-ibus restart
-
-gsettings set org.gnome.desktop.input-sources sources \
-  "[('xkb', 'us'), ('ibus', 'sherpa-onnx')]"
+sudo dpkg -i ibus-sherpa-onnx_*.deb
 ```
 
-Switch to **Sherpa ONNX** (Super+Space), focus a text field, toggle with **Ctrl+Shift+Space**.
+3. Pick a speech model (downloads ~440 MB, installs via polkit, makes Sherpa the active IME, restarts IBus):
+
+```bash
+ibus-setup-sherpa-onnx
+```
+
+Focus a text field and toggle with **Ctrl+Shift+Space**. Super+Space switches away/back if you want.
 
 ```bash
 sudo dpkg -r ibus-sherpa-onnx   # uninstall
 ```
 
-Model weights are not in the `.deb` (~440 MB). Fetch chooses the tree by euid (user config vs `/usr/share/…`) and sets the `model` symlink — no path env vars. Prefs: `~/.config/ibus-sherpa-onnx/settings.ini` (hotkey, notifications, preedit-animation).
+Model weights are not in the `.deb`. Settings: `~/.config/ibus-sherpa-onnx/settings.ini`.
 
-## Build from source
-
-Build-deps from the archive still use apt; the resulting package is installed with dpkg as above.
-
-```bash
-sudo apt-get install -y \
-  valac meson ninja-build pkg-config debhelper devscripts \
-  libibus-1.0-dev \
-  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-  gstreamer1.0-plugins-good gstreamer1.0-plugins-base \
-  gstreamer1.0-pulseaudio gstreamer1.0-pipewire \
-  libonnxruntime1.21 libonnxruntime-dev
-
-sudo dpkg -i libsherpa-onnx-c-api1_*.deb libsherpa-onnx-c-api-dev_*.deb
-meson setup build && ninja -C build
-dpkg-buildpackage -us -uc -b   # → ../ibus-sherpa-onnx_*.deb
-```
-
-Sideline demos (not packaged): `./build/sherpa-onnx-mic`, `./build/sherpa-onnx-gtk`.
-
-GitHub Actions builds the `.deb` on `v*` tags (`.github/workflows/release.yml`). RPM later.
-
-## Plans
-
-- [`0.1-vala-sherpa-stdout-poc.md`](docs/plans/0.1-vala-sherpa-stdout-poc.md)
-- [`0.2-vala-gtk-composer.md`](docs/plans/0.2-vala-gtk-composer.md)
-- [`0.3-vala-ibus-sherpa-onnx.md`](docs/plans/0.3-vala-ibus-sherpa-onnx.md)
-- [`0.4-prefs-feedback-models.md`](docs/plans/0.4-prefs-feedback-models.md) — prefs, listening feedback, system model download
+Build from source: **[BUILD.md](BUILD.md)**.
 
 ## Artificial Intelligence Usage
 
