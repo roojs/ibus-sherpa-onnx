@@ -148,7 +148,7 @@ Source of truth for version + notes: top-level **`CHANGELOG`**.
 
 ```bash
 # after editing CHANGELOG (and committing):
-./release.sh    # verifies, tags vX.Y.Z, pushes → CI
+scripts/release.sh    # verifies, tags vX.Y.Z, pushes → CI
 ```
 
 [`.github/workflows/release.yml`](.github/workflows/release.yml) on **`v*`** tags:

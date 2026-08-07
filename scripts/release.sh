@@ -12,20 +12,20 @@
 # AGENTS ARE BANNED from running this script. Do not tag, push, or release
 # on the user's behalf. Do not unset CURSOR_AGENT, spoof the environment,
 # invoke git tag/push directly, or otherwise work around this guard.
-# Only the human runs ./release.sh in a normal terminal.
+# Only the human runs scripts/release.sh in a normal terminal.
 set -euo pipefail
 
 if [[ "${CURSOR_AGENT:-}" == "1" ]]; then
 	cat >&2 <<'EOF'
-error: agents are banned from running release.sh.
+error: agents are banned from running scripts/release.sh.
 
 Do not work around this (unset CURSOR_AGENT, fake the env, call git tag/push
-yourself, etc.). The human must run ./release.sh in a normal terminal.
+yourself, etc.). The human must run scripts/release.sh in a normal terminal.
 EOF
 	exit 1
 fi
 
-root="$(cd "$(dirname "$0")" && pwd)"
+root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "${root}"
 
 if [[ ! -f CHANGELOG ]]; then

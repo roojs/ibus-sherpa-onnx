@@ -1,6 +1,6 @@
 name: Release build
 
-# Tag `vX.Y.Z` (via ./release.sh): build Debian + Fedora packages and publish
+# Tag `vX.Y.Z` (via scripts/release.sh): build Debian + Fedora packages and publish
 # a GitHub Release whose notes come from the top-level CHANGELOG.
 
 run-name: Release build · ${{ github.ref_name }}

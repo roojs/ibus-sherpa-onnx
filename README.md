@@ -48,7 +48,7 @@ Focus a text field and toggle with **Ctrl+Shift+Space**. Super+Space switches aw
 
 Model weights are not in the package. Settings: `~/.config/ibus-sherpa-onnx/settings.ini`.
 
-Build from source: **[BUILD.md](BUILD.md)**. Releases: edit **`CHANGELOG`**, then run **`./release.sh`** (tags `vX.Y.Z` and pushes; CI builds `.deb` / `.rpm`).
+Build from source: **[BUILD.md](BUILD.md)**. Releases: edit **`CHANGELOG`**, then run **`scripts/release.sh`** (tags `vX.Y.Z` and pushes; CI builds `.deb` / `.rpm`).
 
 ## Artificial Intelligence Usage
 
