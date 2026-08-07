@@ -7,7 +7,7 @@
 	<version>0.1.0</version>
 	<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
 	<license>LGPL</license>
-	<homepage>https://github.com/roojs/gtk-speechtotext-poc</homepage>
+	<homepage>https://github.com/roojs/ibus-sherpa-onnx</homepage>
 	<textdomain>ibus-sherpa-onnx</textdomain>
 
 	<engines>

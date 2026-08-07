@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: ibus-sherpa-onnx
-Source: https://github.com/roojs/gtk-speechtotext-poc
+Source: https://github.com/roojs/ibus-sherpa-onnx
 
 Files: *
 Copyright: 2026 Alan Knowles <alan@roojs.com>

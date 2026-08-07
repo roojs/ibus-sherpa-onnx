@@ -17,9 +17,9 @@ Build-Depends: debhelper-compat (= 13),
                libarchive-dev,
                libsherpa-onnx-c-api-dev
 Standards-Version: 4.6.2
-Homepage: https://github.com/roojs/gtk-speechtotext-poc
-Vcs-Browser: https://github.com/roojs/gtk-speechtotext-poc
-Vcs-Git: https://github.com/roojs/gtk-speechtotext-poc.git
+Homepage: https://github.com/roojs/ibus-sherpa-onnx
+Vcs-Browser: https://github.com/roojs/ibus-sherpa-onnx
+Vcs-Git: https://github.com/roojs/ibus-sherpa-onnx.git
 Rules-Requires-Root: no
 
 Package: ibus-sherpa-onnx

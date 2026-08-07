@@ -190,7 +190,7 @@ namespace IBus.SherpaOnnx
 			var component = new IBus.Component(
 				"org.roojs.IBus.SherpaOnnx", "Sherpa ONNX", "0.1.0", "LGPL",
 				"Alan Knowles <alan@roojs.com>",
-				"https://github.com/roojs/gtk-speechtotext-poc",
+				"https://github.com/roojs/ibus-sherpa-onnx",
 				"", "ibus-sherpa-onnx"
 			);
 			component.add_engine((IBus.EngineDesc) GLib.Object.new(

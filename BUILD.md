@@ -70,14 +70,21 @@ meson setup build
 ninja -C build
 ```
 
+Default build is the IBus engine + Preferences only. Optional sideline demos:
+
+```bash
+meson setup build -Dcli=true -Dgtk_demo=true   # or meson configure build -Dcli=true …
+ninja -C build
+```
+
 Binaries under `build/`:
 
-| Binary | Packaged? | Role |
-| --- | --- | --- |
-| `ibus-engine-sherpa-onnx` | yes | IBus engine |
-| `ibus-setup-sherpa-onnx` | yes | Preferences / model download |
-| `sherpa-onnx-mic` | no | CLI mic → stdout smoke test |
-| `sherpa-onnx-gtk` | no | GTK composer demo |
+| Binary | Default? | Packaged? | Role |
+| --- | --- | --- | --- |
+| `ibus-engine-sherpa-onnx` | yes | yes | IBus engine |
+| `ibus-setup-sherpa-onnx` | yes | yes | Preferences / model download |
+| `sherpa-onnx-mic` | `-Dcli=true` | no | CLI mic → stdout smoke test |
+| `sherpa-onnx-gtk` | `-Dgtk_demo=true` | no | GTK composer demo |
 
 Install into a prefix (optional; for day-to-day prefer the `.deb`):
 
@@ -112,7 +119,7 @@ What the `.deb` ships (see `meson.build` `install:`):
 - `/usr/libexec/ibus-setup-sherpa-onnx`
 - IBus component XML, setup `.desktop`, fetch script, checksums, empty `models/` dir
 
-Sideline demos (`sherpa-onnx-mic`, `sherpa-onnx-gtk`) are **not** in the package.
+Sideline demos are off by default and **not** in the package (`install: false`).
 
 Uninstall:
 

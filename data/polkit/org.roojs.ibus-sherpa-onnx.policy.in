@@ -4,7 +4,7 @@
  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
 <policyconfig>
   <vendor>roojs</vendor>
-  <vendor_url>https://github.com/roojs/gtk-speechtotext-poc</vendor_url>
+  <vendor_url>https://github.com/roojs/ibus-sherpa-onnx</vendor_url>
 
   <action id="org.roojs.ibus-sherpa-onnx.install-model">
     <description>Install Sherpa ONNX speech model</description>

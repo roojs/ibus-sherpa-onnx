@@ -53,7 +53,7 @@ namespace IBus.SherpaOnnx.Setup
 			this.add("notifications", new RowSwitch(this.config, "notifications",
 				"Desktop notifications", "Notify when listening starts or stops"), listening);
 			this.add("preedit-animation", new RowSwitch(this.config, "preedit-animation",
-				"Preedit listening animation", "Show . … while waiting for speech"), listening);
+				"Preedit listening animation", "Show . .. ... while waiting for speech"), listening);
 
 			var models = new Adw.PreferencesGroup() {
 				title = "Select model",

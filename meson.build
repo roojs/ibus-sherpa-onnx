@@ -88,27 +88,29 @@ install_data(
   install_dir: get_option('datadir') / 'ibus-sherpa-onnx' / 'checksums',
 )
 
-# Sideline: CLI stdout mic smoke test (not in the .deb).
-executable(
-  'sherpa-onnx-mic',
-  [
-    'src/cli/main.vala',
-    'src/Transcriber.vala',
-  ],
-  dependencies: [
-    glib_dep,
-    gobject_dep,
-    gio_unix_dep,
-    gst_dep,
-    gst_app_dep,
-    sherpa_dep,
-    m_dep,
-  ],
-  vala_args: [
-    '--pkg=posix',
-  ],
-  install: false,
-)
+# Sideline: CLI stdout mic smoke test (off by default; not packaged).
+if get_option('cli')
+  executable(
+    'sherpa-onnx-mic',
+    [
+      'src/cli/main.vala',
+      'src/Transcriber.vala',
+    ],
+    dependencies: [
+      glib_dep,
+      gobject_dep,
+      gio_unix_dep,
+      gst_dep,
+      gst_app_dep,
+      sherpa_dep,
+      m_dep,
+    ],
+    vala_args: [
+      '--pkg=posix',
+    ],
+    install: false,
+  )
+endif
 
 gtk_dep = dependency('gtk4')
 adw_dep = dependency('libadwaita-1')
@@ -150,28 +152,30 @@ install_data(
 
 install_emptydir(get_option('datadir') / 'ibus-sherpa-onnx' / 'models')
 
-# Sideline: GTK composer demo (optional; not in the .deb).
-executable(
-  'sherpa-onnx-gtk',
-  [
-    'src/gtk/main.vala',
-    'src/gtk/ComposerInput.vala',
-    'src/gtk/ScrolledView.vala',
-    'src/Transcriber.vala',
-  ],
-  dependencies: [
-    glib_dep,
-    gobject_dep,
-    gio_unix_dep,
-    gst_dep,
-    gst_app_dep,
-    sherpa_dep,
-    gtk_dep,
-    adw_dep,
-    m_dep,
-  ],
-  vala_args: [
-    '--pkg=posix',
-  ],
-  install: false,
-)
+# Sideline: GTK composer demo (off by default; not packaged).
+if get_option('gtk_demo')
+  executable(
+    'sherpa-onnx-gtk',
+    [
+      'src/gtk/main.vala',
+      'src/gtk/ComposerInput.vala',
+      'src/gtk/ScrolledView.vala',
+      'src/Transcriber.vala',
+    ],
+    dependencies: [
+      glib_dep,
+      gobject_dep,
+      gio_unix_dep,
+      gst_dep,
+      gst_app_dep,
+      sherpa_dep,
+      gtk_dep,
+      adw_dep,
+      m_dep,
+    ],
+    vala_args: [
+      '--pkg=posix',
+    ],
+    install: false,
+  )
+endif

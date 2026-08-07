@@ -16,7 +16,7 @@ Use **`dpkg -i`** for local `.deb` files (not `apt install …/path.deb`).
 sudo dpkg -i libsherpa-onnx-c-api1_*.deb
 ```
 
-2. This engine from [ibus-sherpa-onnx releases](https://github.com/roojs/gtk-speechtotext-poc/releases) (or a `.deb` you were given):
+2. This engine from [ibus-sherpa-onnx releases](https://github.com/roojs/ibus-sherpa-onnx/releases) (or a `.deb` you were given):
 
 ```bash
 sudo dpkg -i ibus-sherpa-onnx_*.deb

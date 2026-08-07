@@ -147,7 +147,7 @@ namespace IBus.SherpaOnnx
 			}
 			var on = Engine.transcriber == null || !Engine.transcriber.listening;
 			this.update_listening(on, true);
-…		}
+		}
 
 		public override bool process_key_event(uint keyval, uint keycode, uint state)
 		{
@@ -211,14 +211,14 @@ namespace IBus.SherpaOnnx
 			this.update_ui();
 		}
 
-		/**…
+		/**
 		 * Start or stop the mic. Stopping commits {@link Transcriber.last_text}
 		 * when a real partial was shown.
 		 *
 		 * @param listening desired mic state
 		 * @param notify emit the listening desktop notification
 		 */
-		private void update_listening(bool listening, bool notify).
+		private void update_listening(bool listening, bool notify)
 		{
 			if (Engine.transcriber == null) {
 				if (listening) {
@@ -263,8 +263,8 @@ namespace IBus.SherpaOnnx
 		private void update_ui()
 		{
 			if (Engine.transcriber != null && Engine.transcriber.listening) {
-				this.prop.set_label(new IBus.Text.from_string("Listening…"));
-				this.prop.set_symbol(new IBus.Text.from_string("…"));
+				this.prop.set_label(new IBus.Text.from_string("Listening..."));
+				this.prop.set_symbol(new IBus.Text.from_string("..."));
 				this.prop.set_icon("audio-input-microphone");
 				this.prop.set_state(IBus.PropState.CHECKED);
 				this.update_property(this.prop);
@@ -280,7 +280,7 @@ namespace IBus.SherpaOnnx
 			this.prop.set_icon("microphone-sensitivity-muted");
 			this.prop.set_state(IBus.PropState.UNCHECKED);
 			this.update_preedit_text(new IBus.Text.from_string(""), 0, false);
-..			this.hide_preedit_text();
+			this.hide_preedit_text();
 			this.update_property(this.prop);
 		}
 
@@ -288,19 +288,20 @@ namespace IBus.SherpaOnnx
 		{
 			this.stop_preedit_animation();
 			if (!Engine.config.key_file.get_boolean("general", "preedit-animation")) {
-				var hint = "Listening…";
+				var hint = "Listening...";
 				this.update_preedit_text(new IBus.Text.from_string(hint), (uint) hint.length, true);
 				return;
 			}
 
 			this.anim_phase = 0;
 			this.show_anim_preedit();
-			this.anim_source = GLib.Timeout.add(400, () => {
+			this.anim_source = GLib.Timeout.add(300, () => {
 				if (Engine.transcriber == null || !Engine.transcriber.listening || this.saw_partial) {
 					this.anim_source = 0;
 					return GLib.Source.REMOVE;
 				}
-				this.anim_phase = (this.anim_phase + 1) % 3;
+				/* Bounce . → .. → ... → .. → . … */
+				this.anim_phase = (this.anim_phase + 1) % 4;
 				this.show_anim_preedit();
 				return GLib.Source.CONTINUE;
 			});
@@ -314,10 +315,11 @@ namespace IBus.SherpaOnnx
 				dots = ".";
 				break;
 			case 1:
+			case 3:
 				dots = "..";
 				break;
 			default:
-				dots = "…";
+				dots = "...";
 				break;
 			}
 			this.update_preedit_text(new IBus.Text.from_string(dots), (uint) dots.length, true);
@@ -343,14 +345,14 @@ namespace IBus.SherpaOnnx
 			}
 			var note = new GLib.Notification("Sherpa ONNX");
 			if (Engine.transcriber.listening) {
-				note.set_body("Listening…");
+				note.set_body("Listening...");
 			} else {
-				note.set_body("Mic off");..
+				note.set_body("Mic off");
 			}
 			app.send_notification("sherpa-onnx-listening", note);
 		}
 
-		/**.
+		/**
 		 * Always notify when the user tries to dictate with no model (not gated
 		 * by the listening-notifications pref). Action opens Preferences.
 		 */
