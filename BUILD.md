@@ -128,21 +128,41 @@ Uninstall:
 sudo dpkg -r ibus-sherpa-onnx
 ```
 
-## GitHub Actions
+## Fedora RPM (local)
 
-[`.github/workflows/release.yml`](.github/workflows/release.yml) builds the `.deb` in an `ubuntu:25.04` container:
+Spec: [`rpm/ibus-sherpa-onnx.spec`](rpm/ibus-sherpa-onnx.spec). Needs `libsherpa-onnx-c-api` + `-devel` from [sherpa-onnx releases](https://github.com/roojs/sherpa-onnx/releases) first.
 
-- On **`v*`** tags: build, upload artifact, publish GitHub Release assets
-- **`workflow_dispatch`**: build + artifact only (no release unless tagged)
+```bash
+ver="$(scripts/sync-changelog.sh version)"
+mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+tar --exclude=.git --exclude=build --exclude=rpmbuild --exclude=obj-* \
+  -czf "rpmbuild/SOURCES/ibus-sherpa-onnx-${ver}.tar.gz" \
+  --transform "s,^,ibus-sherpa-onnx-${ver}/," .
+cp rpm/ibus-sherpa-onnx.spec rpmbuild/SPECS/
+rpmbuild -bb --define "_topdir $PWD/rpmbuild" rpmbuild/SPECS/ibus-sherpa-onnx.spec
+```
 
-CI installs archive build-deps, pulls `libsherpa-onnx` `.deb`s from `roojs/sherpa-onnx`, then runs `dpkg-buildpackage -us -uc -b`.
+## GitHub Actions / release
 
-RPM packaging is not set up yet.
+Source of truth for version + notes: top-level **`CHANGELOG`**.
+
+```bash
+# after editing CHANGELOG (and committing):
+./release.sh    # verifies, tags vX.Y.Z, pushes → CI
+```
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) on **`v*`** tags:
+
+1. Sync `debian/changelog` from `CHANGELOG`
+2. Build `.deb` (ubuntu:25.04) and `.rpm` (fedora:44)
+3. Publish GitHub Release assets; release body = `CHANGELOG` notes for that version
+
+`workflow_dispatch` builds artifacts only (no release unless tagged).
 
 ## Quick checklist
 
-1. Plucky-class host (or matching container)
-2. apt build tools + `-dev` packages above
-3. `libsherpa-onnx-c-api1` + `-dev` via `dpkg -i`
-4. `meson setup build && ninja -C build` **or** `dpkg-buildpackage -us -uc -b`
-5. Install engine `.deb`, fetch/select a model, `ibus restart`
+1. Plucky-class host (or matching container) for Debian; Fedora 44-class for RPM
+2. Build tools + `-dev` / `-devel` packages
+3. `libsherpa-onnx-c-api` (+ devel) via `dpkg -i` / `dnf install`
+4. `meson setup build && ninja -C build` **or** package build
+5. Install engine package, fetch/select a model, `ibus restart`

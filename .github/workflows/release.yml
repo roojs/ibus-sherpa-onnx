@@ -1,8 +1,7 @@
 name: Release build
 
-# Debian package now; RPM job to follow (same pattern as RooTerm / sherpa-onnx).
-# Tags like `v0.1.0` publish artifacts to the GitHub Release.
-# Also runnable via workflow_dispatch (artifact upload only when untagged).
+# Tag `vX.Y.Z` (via ./release.sh): build Debian + Fedora packages and publish
+# a GitHub Release whose notes come from the top-level CHANGELOG.
 
 run-name: Release build · ${{ github.ref_name }}
 
@@ -74,15 +73,20 @@ jobs:
           apt-get install -y /tmp/sherpa-debs/libsherpa-onnx-c-api1_*.deb \
             /tmp/sherpa-debs/libsherpa-onnx-c-api-dev_*.deb
 
-      - name: Sync changelog version from tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Sync debian/changelog from CHANGELOG
         run: |
           set -euo pipefail
-          ver="${GITHUB_REF_NAME#v}"
-          if head -1 debian/changelog | grep -q "^ibus-sherpa-onnx ("; then
-            sed -i "1s/^ibus-sherpa-onnx ([^)]*)/ibus-sherpa-onnx (${ver}-1)/" debian/changelog
+          chmod +x scripts/sync-changelog.sh
+          scripts/sync-changelog.sh debian
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            ver="${GITHUB_REF_NAME#v}"
+            cl_ver="$(scripts/sync-changelog.sh version)"
+            if [[ "${cl_ver}" != "${ver}" ]]; then
+              echo "CHANGELOG version ${cl_ver} != tag ${ver}" >&2
+              exit 1
+            fi
           fi
-          head -1 debian/changelog
+          head -20 debian/changelog
 
       - name: Build .deb
         run: |
@@ -99,11 +103,112 @@ jobs:
           name: ibus-sherpa-onnx-deb
           path: artifacts/*
 
-  # TODO: build-rpm (Fedora), same artifact/publish pattern as RooTerm.
+  build-rpm:
+    name: Build Fedora RPM
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:44
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install git and tools
+        run: |
+          set -euo pipefail
+          dnf -y install ca-certificates git gh
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          dnf -y install \
+            rpm-build rpmdevtools \
+            meson ninja-build gcc pkgconf-pkg-config vala \
+            glib2-devel ibus-devel \
+            gstreamer1-devel gstreamer1-plugins-base-devel \
+            gtk4-devel libadwaita-devel \
+            libsoup3-devel libarchive-devel
+
+      - name: Install libsherpa-onnx from roojs/sherpa-onnx release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sherpa-rpms
+          gh release download -R roojs/sherpa-onnx \
+            -p 'libsherpa-onnx-c-api-*.x86_64.rpm' \
+            -p 'libsherpa-onnx-c-api-devel-*.x86_64.rpm' \
+            -D /tmp/sherpa-rpms
+          # Skip debuginfo noise if the glob pulled it in.
+          rm -f /tmp/sherpa-rpms/*debuginfo* /tmp/sherpa-rpms/*debugsource* || true
+          dnf -y install /tmp/sherpa-rpms/libsherpa-onnx-c-api-*.rpm \
+            /tmp/sherpa-rpms/libsherpa-onnx-c-api-devel-*.rpm
+
+      - name: Sync version from CHANGELOG / tag
+        run: |
+          set -euo pipefail
+          chmod +x scripts/sync-changelog.sh
+          ver="$(scripts/sync-changelog.sh version)"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            tag_ver="${GITHUB_REF_NAME#v}"
+            if [[ "${ver}" != "${tag_ver}" ]]; then
+              echo "CHANGELOG version ${ver} != tag ${tag_ver}" >&2
+              exit 1
+            fi
+          fi
+          echo "RPM_VERSION=${ver}" >> "$GITHUB_ENV"
+          sed -i "s/^Version:[[:space:]]*.*/Version:        ${ver}/" rpm/ibus-sherpa-onnx.spec
+          sed -i "s/^Release:[[:space:]]*.*/Release:        1%{?dist}/" rpm/ibus-sherpa-onnx.spec
+          grep -E '^(Version|Release):' rpm/ibus-sherpa-onnx.spec
+
+      - name: Build RPM
+        run: |
+          set -euo pipefail
+          ver="${RPM_VERSION}"
+          topdir="${PWD}/rpmbuild"
+          mkdir -p "${topdir}"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+
+          tar \
+            --exclude=.git \
+            --exclude=build \
+            --exclude=rpmbuild \
+            --exclude=artifacts \
+            --exclude=obj-* \
+            --exclude='*.deb' \
+            --exclude='*.rpm' \
+            --exclude='*.ddeb' \
+            -czf "${topdir}/SOURCES/ibus-sherpa-onnx-${ver}.tar.gz" \
+            --transform "s,^,ibus-sherpa-onnx-${ver}/," \
+            .
+
+          cp rpm/ibus-sherpa-onnx.spec "${topdir}/SPECS/"
+          sed -i "s/^Version:[[:space:]]*.*/Version:        ${ver}/" \
+            "${topdir}/SPECS/ibus-sherpa-onnx.spec"
+
+          rpmbuild -bb \
+            --define "_topdir ${topdir}" \
+            --define "_smp_ncpus_max 2" \
+            "${topdir}/SPECS/ibus-sherpa-onnx.spec"
+
+          mkdir -p artifacts
+          find "${topdir}/RPMS" -type f -name '*.rpm' ! -name '*.src.rpm' \
+            ! -name '*debuginfo*' ! -name '*debugsource*' \
+            -exec cp -t artifacts {} +
+          ls -lh artifacts
+
+      - name: Upload RPM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ibus-sherpa-onnx-rpm
+          path: artifacts/*
 
   publish:
     name: Publish release assets
-    needs: [build-debian]
+    needs: [build-debian, build-rpm]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
     steps:
@@ -122,11 +227,14 @@ jobs:
         run: |
           set -euo pipefail
           ls -lh artifacts
-          ver="${GITHUB_REF_NAME#v}"
-          if head -1 debian/changelog | grep -q "^ibus-sherpa-onnx ("; then
-            sed -i "1s/^ibus-sherpa-onnx ([^)]*)/ibus-sherpa-onnx (${ver}-1)/" debian/changelog
+          chmod +x scripts/sync-changelog.sh
+          ver="$(scripts/sync-changelog.sh version)"
+          tag_ver="${GITHUB_REF_NAME#v}"
+          if [[ "${ver}" != "${tag_ver}" ]]; then
+            echo "CHANGELOG version ${ver} != tag ${tag_ver}" >&2
+            exit 1
           fi
-          notes="$(sed -n '/^  \*/,/^ -- /p' debian/changelog | sed '$d')"
+          notes="$(scripts/sync-changelog.sh notes)"
           gh release create "$GITHUB_REF_NAME" artifacts/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \

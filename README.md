@@ -8,36 +8,47 @@ Local streaming speech-to-text as an **IBus** input method, via **sherpa-onnx** 
 
 ## Install
 
-Use **`dpkg -i`** for local `.deb` files (not `apt install …/path.deb`).
+Packages are on [GitHub Releases](https://github.com/roojs/ibus-sherpa-onnx/releases). You also need the sherpa runtime from [libsherpa-onnx releases](https://github.com/roojs/sherpa-onnx/releases).
 
-1. Runtime from [libsherpa-onnx releases](https://github.com/roojs/sherpa-onnx/releases):
+### Debian / Ubuntu
+
+Use **`dpkg -i`** for local `.deb` files (not `apt install …/path.deb`).
 
 ```bash
 sudo dpkg -i libsherpa-onnx-c-api1_*.deb
-```
-
-2. This engine from [ibus-sherpa-onnx releases](https://github.com/roojs/ibus-sherpa-onnx/releases) (or a `.deb` you were given):
-
-```bash
 sudo dpkg -i ibus-sherpa-onnx_*.deb
-```
-
-3. Pick a speech model (downloads ~440 MB, installs via polkit, makes Sherpa the active IME, restarts IBus):
-
-```bash
 ibus-setup-sherpa-onnx
 ```
-
-Focus a text field and toggle with **Ctrl+Shift+Space**. Super+Space switches away/back if you want.
 
 ```bash
 sudo dpkg -r ibus-sherpa-onnx   # uninstall
 ibus restart                    # drop the running engine from the session
 ```
 
-Model weights are not in the `.deb`. Settings: `~/.config/ibus-sherpa-onnx/settings.ini`.
+### Fedora
 
-Build from source: **[BUILD.md](BUILD.md)**.
+```bash
+sudo dnf install ./libsherpa-onnx-c-api-*.x86_64.rpm
+sudo dnf install ./ibus-sherpa-onnx-*.x86_64.rpm
+ibus-setup-sherpa-onnx
+```
+
+Skip `*debuginfo*` / `*debugsource*` / `*-devel*` RPMs unless you are building from source.
+
+```bash
+sudo dnf remove ibus-sherpa-onnx
+ibus restart
+```
+
+### After install
+
+`ibus-setup-sherpa-onnx` downloads a speech model (~440 MB), installs it via polkit, makes Sherpa the active IME, and restarts IBus.
+
+Focus a text field and toggle with **Ctrl+Shift+Space**. Super+Space switches away/back if you want.
+
+Model weights are not in the package. Settings: `~/.config/ibus-sherpa-onnx/settings.ini`.
+
+Build from source: **[BUILD.md](BUILD.md)**. Releases: edit **`CHANGELOG`**, then run **`./release.sh`** (tags `vX.Y.Z` and pushes; CI builds `.deb` / `.rpm`).
 
 ## Artificial Intelligence Usage
 
