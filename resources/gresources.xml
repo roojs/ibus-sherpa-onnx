@@ -3,5 +3,6 @@
   <gresource prefix="/">
     <file compressed="true">languages.ini</file>
     <file compressed="true">models.ini</file>
+    <file compressed="true">ibus-setup-engine.desktop.in</file>
   </gresource>
 </gresources>

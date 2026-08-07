@@ -10,6 +10,12 @@ ibus-sherpa-onnx (0.2.0-1) unstable; urgency=medium
       sherpa-onnx-ja) so GNOME Settings groups the IME under that language; prefs
       activates the matching engine on apply.
   * Polkit install allowlist includes multilingual pack directory names.
+  * Mic capture: WebRTC AGC (webrtcdsp gain-control); depends on
+    gstreamer1.0-plugins-bad.
+  * Model download verifies via GitHub Releases API digest (no packaged
+    checksum sidecars).
+  * ASR language from engine id or prefs when bare sherpa-onnx.
+  * Preferences window widened for language combo labels.
 
 
  -- Alan Knowles <alan@roojs.com>  Fri, 07 Aug 2026 00:00:00 +0800

@@ -23,6 +23,7 @@ BuildRequires:  gstreamer1-plugins-base-devel
 BuildRequires:  gtk4-devel
 BuildRequires:  libadwaita-devel
 BuildRequires:  libsoup3-devel
+BuildRequires:  json-glib-devel
 BuildRequires:  libarchive-devel
 BuildRequires:  libicu-devel
 BuildRequires:  libgee-devel

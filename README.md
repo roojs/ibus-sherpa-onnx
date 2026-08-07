@@ -24,6 +24,7 @@ sudo apt install \
   libgtk-4-1 \
   libadwaita-1-0 \
   libsoup-3.0-0 \
+  libjson-glib-1.0-0 \
   libarchive13t64 \
   libibus-1.0-5 \
   libgstreamer1.0-0 \
@@ -104,6 +105,7 @@ sudo dnf install \
   gtk4 \
   libadwaita \
   libsoup3 \
+  json-glib \
   libarchive \
   gstreamer1-plugins-base \
   gstreamer1-plugins-good \

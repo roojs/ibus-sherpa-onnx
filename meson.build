@@ -91,12 +91,6 @@ configure_file(
   install_dir: get_option('datadir') / 'polkit-1' / 'actions',
 )
 
-install_data(
-  'data/checksums/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25.sha256',
-  'data/checksums/sherpa-onnx-nemotron-speech-streaming-en-0.6b-1120ms-int8-2026-04-25.sha256',
-  install_dir: get_option('datadir') / 'ibus-sherpa-onnx' / 'checksums',
-)
-
 # Sideline: CLI stdout mic smoke test (off by default; not packaged).
 if get_option('cli')
   executable(
@@ -104,6 +98,7 @@ if get_option('cli')
     [
       'src/cli/main.vala',
       'src/Transcriber.vala',
+      'src/EngineStub.vala',
     ],
     dependencies: [
       glib_dep,
@@ -124,6 +119,7 @@ endif
 gtk_dep = dependency('gtk4')
 adw_dep = dependency('libadwaita-1')
 soup_dep = dependency('libsoup-3.0')
+json_dep = dependency('json-glib-1.0')
 archive_dep = dependency('libarchive')
 # Hand-written binding: src/icu-i18n.vapi + src/Icu.vala (UTF-8 API).
 icu_dep = dependency('icu-i18n')
@@ -153,6 +149,7 @@ executable(
     gtk_dep,
     adw_dep,
     soup_dep,
+    json_dep,
     archive_dep,
     icu_dep,
     gee_dep,
@@ -175,6 +172,12 @@ install_data(
   install_dir: get_option('datadir') / 'applications',
 )
 
+# Matches GLib.Application id so GNotification banners are allowed on GNOME.
+install_data(
+  'data/org.roojs.ibus-sherpa-onnx.desktop',
+  install_dir: get_option('datadir') / 'applications',
+)
+
 install_emptydir(get_option('datadir') / 'ibus-sherpa-onnx' / 'models')
 
 # Sideline: GTK composer demo (off by default; not packaged).
@@ -186,6 +189,7 @@ if get_option('gtk_demo')
       'src/gtk/ComposerInput.vala',
       'src/gtk/ScrolledView.vala',
       'src/Transcriber.vala',
+      'src/EngineStub.vala',
     ],
     dependencies: [
       glib_dep,

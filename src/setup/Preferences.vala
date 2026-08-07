@@ -45,7 +45,7 @@ namespace IBus.SherpaOnnx.Setup
 				application: app,
 				title: "Sherpa ONNX Preferences",
 				resizable: false,
-				default_width: 520,
+				default_width: 720,
 				default_height: 720
 			);
 			this.config = Config.load();
@@ -75,6 +75,7 @@ namespace IBus.SherpaOnnx.Setup
 
 			language.changed.connect((code) => {
 				model.family = this.models.languages.get_string(code, "family");
+				model.fill();
 			});
 
 			this.stack = new Gtk.Stack() {
@@ -123,11 +124,11 @@ namespace IBus.SherpaOnnx.Setup
 			/* Non-homogeneous stack still leaves the old allocation; force a new default size. */
 			this.resizable = true;
 			if (name == "prefs") {
-				this.set_default_size(520, 720);
+				this.set_default_size(720, 720);
 			} else {
 				var nat = 0;
-				this.stack.measure(Gtk.Orientation.VERTICAL, 520, null, out nat, null, null);
-				this.set_default_size(520, int.max(nat + 52, 160));
+				this.stack.measure(Gtk.Orientation.VERTICAL, 720, null, out nat, null, null);
+				this.set_default_size(720, int.max(nat + 52, 160));
 			}
 			this.resizable = false;
 		}
@@ -141,18 +142,33 @@ namespace IBus.SherpaOnnx.Setup
 			section.add(row.row);
 		}
 
-		/** Reload rows from disk. */
+		/** Reload rows from disk; language combo follows the active IBus engine. */
 		public void fill()
 		{
 			this.config = Config.load();
+
+			var id = "";
+			var bus = new IBus.Bus();
+			if (bus.is_connected()) {
+				var eng = bus.get_global_engine();
+				id = eng != null ? eng.get_name() : "";
+			}
+			if (id == "sherpa-onnx") {
+				this.config.key_file.set_string("general", "language", "en");
+			}
+			if (id.has_prefix("sherpa-onnx-")) {
+				this.config.key_file.set_string("general", "language",
+					id.substring("sherpa-onnx-".length));
+			}
+
+			var model = (RowSelectModel) this.rows.get("model");
+			var code = this.config.key_file.get_string("general", "language");
+			model.family = this.models.languages.get_string(code, "family");
 			foreach (var name in this.rows.get_keys()) {
 				var row = this.rows.get(name);
 				row.config = this.config;
 				row.fill();
 			}
-			var model = (RowSelectModel) this.rows.get("model");
-			var code = this.config.key_file.get_string("general", "language");
-			model.family = this.models.languages.get_string(code, "family");
 		}
 
 		private bool on_close_request()
@@ -161,9 +177,22 @@ namespace IBus.SherpaOnnx.Setup
 				return true;
 			}
 			((RowKeySelect) this.rows.get("hotkey")).fill();
-			this.config.save();
 
+			var language = this.config.key_file.get_string("general", "language");
 			var pack_id = ((RowSelectModel) this.rows.get("model")).current_id;
+			if (pack_id != "") {
+				this.config.packs.set_string("packs", language, pack_id);
+				/* Bare engine id is ''en''; GNOME often uses that instead of en-GB. */
+				if (language != "en" && language.has_prefix("en")) {
+					this.config.packs.set_string("packs", "en", pack_id);
+				}
+			} else if (this.config.packs.has_group("packs")
+					&& this.config.packs.has_key("packs", language)) {
+				this.config.packs.remove_key("packs", language);
+			}
+			this.config.save();
+			this.config.save_packs();
+
 			if (!this.download.apply(pack_id)) {
 				this.restart_ibus();
 				return true;
@@ -196,6 +225,7 @@ namespace IBus.SherpaOnnx.Setup
 		{
 			var language = this.config.key_file.get_string("general", "language");
 			var engine = language == "en" ? "sherpa-onnx" : "sherpa-onnx-" + language;
+			this.install_setup_desktop(engine);
 			var schema = GLib.SettingsSchemaSource.get_default().lookup(
 				"org.gnome.desktop.input-sources", true);
 			if (schema == null) {
@@ -221,7 +251,41 @@ namespace IBus.SherpaOnnx.Setup
 				index = i;
 				settings.set_value("sources", builder.end());
 			}
-			settings.set_uint("current", (uint) index);
+			/* ''current'' is ignored by modern GNOME; switch the live IBus engine. */
+			var bus = new IBus.Bus();
+			if (bus.is_connected()) {
+				bus.set_global_engine(engine);
+			}
+		}
+
+		/**
+		 * GNOME Settings ⋯ resolves ''ibus-setup-&lt;engine&gt;.desktop''.
+		 * Bare ''sherpa-onnx'' is packaged under ''/usr/share''; language
+		 * engines get a copy in ''~/.local/share/applications/'' from the
+		 * embedded template.
+		 *
+		 * @param engine IBus engine id (''sherpa-onnx-es-ES'', …)
+		 */
+		private void install_setup_desktop(string engine)
+		{
+			if (engine == "sherpa-onnx") {
+				return;
+			}
+			try {
+				var bytes = GLib.resources_lookup_data(
+					"/ibus-setup-engine.desktop.in", GLib.ResourceLookupFlags.NONE);
+				var text = ((string) bytes.get_data())
+					.substring(0, (long) bytes.get_size())
+					.replace("@ENGINE@", engine);
+				var dir = GLib.Path.build_filename(
+					GLib.Environment.get_user_data_dir(), "applications");
+				GLib.DirUtils.create_with_parents(dir, 0755);
+				var path = GLib.Path.build_filename(dir,
+					"ibus-setup-%s.desktop".printf(engine));
+				GLib.FileUtils.set_contents(path, text);
+			} catch (GLib.Error err) {
+				GLib.warning("setup desktop %s: %s", engine, err.message);
+			}
 		}
 	}
 }

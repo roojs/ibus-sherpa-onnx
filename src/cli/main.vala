@@ -81,9 +81,15 @@ int main(string[] args)
 		}
 	}
 
+	var engine = new IBus.SherpaOnnx.Engine() {
+		language = language
+	};
 	IBus.SherpaOnnx.Transcriber transcriber;
 	try {
-		transcriber = new IBus.SherpaOnnx.Transcriber(model_dir, language);
+		transcriber = new IBus.SherpaOnnx.Transcriber(engine) {
+			model_dir = model_dir
+		};
+		transcriber.load();
 	} catch (GLib.Error err) {
 		GLib.stderr.printf("%s\n", err.message);
 		return 1;

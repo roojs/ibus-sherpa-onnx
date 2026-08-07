@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Sherpa ONNX Preferences
+Comment=Preferences for the Sherpa ONNX IBus engine (@ENGINE@)
+Exec=/usr/libexec/ibus-setup-sherpa-onnx
+Icon=audio-input-microphone
+NoDisplay=true
+Type=Application
+StartupNotify=true
+Categories=Settings;

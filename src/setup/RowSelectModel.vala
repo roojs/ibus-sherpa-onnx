@@ -122,19 +122,11 @@ namespace IBus.SherpaOnnx.Setup
 		public override void fill()
 		{
 			this.loading = true;
-			var models = this.download.models;
 			var selected = "";
 			try {
-				var target = GLib.FileUtils.read_link(
-					GLib.Path.build_filename(models.user_config, "model"));
-				var base_name = GLib.Path.get_basename(target);
-				foreach (var pack_id in models.packs.get_groups()) {
-					if (models.packs.get_string(pack_id, "name") == base_name) {
-						selected = pack_id;
-						break;
-					}
-				}
-			} catch (GLib.FileError err) {
+				var language = this.config.key_file.get_string("general", "language");
+				selected = this.config.packs.get_string("packs", language);
+			} catch (GLib.Error err) {
 			}
 			this.select_id(selected);
 			this.loading = false;

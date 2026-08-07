@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Sherpa ONNX
+Comment=IBus speech dictation engine
+Exec=/usr/libexec/ibus-engine-sherpa-onnx --ibus
+Icon=audio-input-microphone
+NoDisplay=true
+Type=Application
+X-GNOME-UsesNotifications=true
+Categories=Utility;

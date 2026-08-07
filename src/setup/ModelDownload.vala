@@ -125,7 +125,7 @@ namespace IBus.SherpaOnnx.Setup
 			var system_path = GLib.Path.build_filename(this.models.system_prefix, "models", name);
 			if (GLib.FileUtils.test(GLib.Path.build_filename(system_path, ".sha256"),
 					GLib.FileTest.IS_REGULAR)) {
-				this.link(system_path);
+				/* Pack choice is in settings.ini per language — no model symlink. */
 				return false;
 			}
 
@@ -165,7 +165,7 @@ namespace IBus.SherpaOnnx.Setup
 		private async void download_archive()
 		{
 			if (GLib.FileUtils.test(this.archive_path, GLib.FileTest.IS_REGULAR)) {
-				this.extract_archive();
+				this.extract_archive.begin();
 				return;
 			}
 			this.cancellable = new GLib.Cancellable();
@@ -249,38 +249,84 @@ namespace IBus.SherpaOnnx.Setup
 				return;
 			}
 
-			this.extract_archive();
+			this.extract_archive.begin();
 		}
 
 		/**
-		 * Verify, unpack, stamp, and link on a worker thread.
+		 * Resolve SHA-256 for ''asset_name'' from the k2-fsa ''asr-models'' release
+		 * (GitHub Releases API ''digest''; fail closed if missing).
+		 */
+		private async string fetch_github_digest(string asset_name) throws GLib.Error
+		{
+			var msg = new Soup.Message("GET",
+				"https://api.github.com/repos/k2-fsa/sherpa-onnx/releases/tags/asr-models");
+			msg.request_headers.append("Accept", "application/vnd.github+json");
+			msg.request_headers.append("User-Agent", "ibus-sherpa-onnx");
+			var bytes = yield this.soup.send_and_read_async(msg, GLib.Priority.DEFAULT,
+				this.cancellable);
+			if (msg.status_code != 200) {
+				throw new GLib.IOError.FAILED("GitHub API HTTP %u", msg.status_code);
+			}
+			var parser = new Json.Parser();
+			parser.load_from_data((string) bytes.get_data(), (ssize_t) bytes.get_size());
+			var root = parser.get_root();
+			if (root == null || root.get_node_type() != Json.NodeType.OBJECT) {
+				throw new GLib.IOError.FAILED("GitHub API: bad JSON");
+			}
+			var assets = root.get_object().get_array_member("assets");
+			if (assets == null) {
+				throw new GLib.IOError.FAILED("GitHub API: no assets");
+			}
+			for (var i = 0; i < assets.get_length(); i++) {
+				var obj = assets.get_object_element(i);
+				if (obj.get_string_member("name") != asset_name) {
+					continue;
+				}
+				if (!obj.has_member("digest")) {
+					throw new GLib.IOError.FAILED("GitHub API: no digest for %s", asset_name);
+				}
+				var digest = obj.get_string_member("digest");
+				if (digest == null || !digest.has_prefix("sha256:")) {
+					throw new GLib.IOError.FAILED("GitHub API: digest not sha256 for %s",
+						asset_name);
+				}
+				return digest.substring("sha256:".length);
+			}
+			throw new GLib.IOError.FAILED("GitHub API: asset not found: %s", asset_name);
+		}
+
+		/**
+		 * Fetch GitHub digest, then verify/unpack/stamp on a worker thread.
 		 *
 		 * Worker queues Idle → {@link archive_progress} / {@link archive_done}
 		 * on the main loop.
 		 */
-		private void extract_archive()
+		private async void extract_archive()
 		{
 			this.cancellable = new GLib.Cancellable();
-			this.status_label.label = "Verifying archive...";
+			this.status_label.label = "Fetching release digest...";
 			this.status_bar.fraction = 0.0;
-			this.status_bar.text = "0%";
+			this.status_bar.text = "";
 			this.cancel_btn.sensitive = true;
 
-			var expect_path = GLib.Path.build_filename(this.models.checksums_dir,
-				this.pending_name + ".sha256");
-			var expected = "";
+			string expected;
 			try {
-				var contents = "";
-				GLib.FileUtils.get_contents(expect_path, out contents);
-				expected = contents.strip().split_set(" \t\n", 2)[0];
+				expected = yield this.fetch_github_digest(this.pending_name + ".tar.bz2");
 			} catch (GLib.Error err) {
-				this.complete("Missing checksum: %s".printf(expect_path));
+				if (this.was_cancelled || err is GLib.IOError.CANCELLED) {
+					this.complete("");
+					return;
+				}
+				this.complete(err.message);
 				return;
 			}
 			if (expected == "") {
-				this.complete("Empty checksum: %s".printf(expect_path));
+				this.complete("Empty digest from GitHub API");
 				return;
 			}
+
+			this.status_label.label = "Verifying archive...";
+			this.status_bar.text = "0%";
 
 			var dest_root = GLib.Path.get_dirname(this.archive_path);
 			var staged = GLib.Path.build_filename(dest_root, this.pending_name);
@@ -393,7 +439,6 @@ namespace IBus.SherpaOnnx.Setup
 			this.status_bar.fraction = 1.0;
 			this.status_bar.text = "Done";
 			this.status_label.label = "Model ready";
-			this.link(this.pending_system);
 			this.finished(true, "");
 		}
 
@@ -542,18 +587,5 @@ namespace IBus.SherpaOnnx.Setup
 			this.finished(false, message);
 		}
 
-		private void link(string target)
-		{
-			GLib.DirUtils.create_with_parents(this.models.user_config, 0755);
-			var link = GLib.File.new_for_path(GLib.Path.build_filename(this.models.user_config, "model"));
-			try {
-				if (link.query_exists()) {
-					link.delete();
-				}
-				link.make_symbolic_link(target);
-			} catch (GLib.Error err) {
-				GLib.warning("symlink model: %s", err.message);
-			}
-		}
 	}
 }

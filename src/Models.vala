@@ -38,7 +38,7 @@ namespace IBus.SherpaOnnx
 		public GLib.KeyFile languages;
 
 		/**
-		 * ''~/.config/ibus-sherpa-onnx'' (user models + active symlink).
+		 * ''~/.config/ibus-sherpa-onnx'' (settings + legacy model symlink).
 		 */
 		public string user_config;
 
@@ -47,24 +47,10 @@ namespace IBus.SherpaOnnx
 		 */
 		public string system_prefix = "/usr/share/ibus-sherpa-onnx";
 
-		/**
-		 * Directory of packaged ''*.sha256'' digests (system or checkout).
-		 * Only used by prefs download verify until that switches to GitHub asset digest.
-		 */
-		public string checksums_dir;
-
 		public Models()
 		{
 			this.user_config = GLib.Path.build_filename(GLib.Environment.get_user_config_dir(),
 				"ibus-sherpa-onnx");
-			var system = GLib.Path.build_filename(this.system_prefix, "checksums");
-			if (GLib.FileUtils.test(system, GLib.FileTest.IS_DIR)) {
-				this.checksums_dir = system;
-			} else {
-				var local = GLib.Path.build_filename(GLib.Environment.get_current_dir(),
-					"data", "checksums");
-				this.checksums_dir = GLib.FileUtils.test(local, GLib.FileTest.IS_DIR) ? local : system;
-			}
 			this.packs = new GLib.KeyFile();
 			this.languages = new GLib.KeyFile();
 			this.packs.load_from_bytes(

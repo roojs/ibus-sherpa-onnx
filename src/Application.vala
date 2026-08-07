@@ -79,9 +79,8 @@ namespace IBus.SherpaOnnx
 	/**
 	 * ''GLib.Application'' host for the Sherpa ONNX IBus engine.
 	 *
-	 * Model path/readiness via {@link Models}. Prefs in
-	 * ''~/.config/ibus-sherpa-onnx/settings.ini'' (KeyFile). ''--debug'' enables
-	 * stderr logging.
+	 * Per-language model pack in ''packs.ini''; prefs in ''settings.ini''.
+	 * Catalog via {@link Models}. ''--debug'' enables stderr logging.
 	 *
 	 * == Usage Examples ==
 	 *
@@ -147,39 +146,11 @@ namespace IBus.SherpaOnnx
 		 */
 		public override void activate()
 		{
-			var models = new Models();
-			var model_dir = "";
-			var link = GLib.Path.build_filename(models.user_config, "model");
-			if (GLib.File.new_for_path(link).query_file_type(GLib.FileQueryInfoFlags.NONE)
-					== GLib.FileType.DIRECTORY) {
-				var path = link;
-				try {
-					if (GLib.FileUtils.test(link, GLib.FileTest.IS_SYMLINK)) {
-						path = GLib.FileUtils.read_link(link);
-					}
-				} catch (GLib.FileError err) {
-				}
-				if (GLib.FileUtils.test(GLib.Path.build_filename(path, ".sha256"),
-						GLib.FileTest.IS_REGULAR)) {
-					model_dir = path;
-				}
-			}
 			IBus.init();
 
+			Engine.models = new Models();
 			Engine.config = Config.load();
-			Engine.transcriber = null;
-			if (model_dir != "") {
-				GLib.debug("Loading model: %s", model_dir);
-				try {
-					Engine.transcriber = new Transcriber(model_dir,
-						Engine.config.key_file.get_string("general", "language"));
-				} catch (GLib.Error err) {
-					GLib.critical("%s", err.message);
-					Engine.transcriber = null;
-				}
-			} else {
-				GLib.debug("No ready model yet — engine idle until Preferences install");
-			}
+			Engine.config.seed_pack_from_symlink(Engine.models);
 
 			Engine.bind_hotkey();
 
@@ -193,7 +164,7 @@ namespace IBus.SherpaOnnx
 			});
 
 			var factory = new IBus.Factory(bus.get_connection());
-			foreach (var code in models.languages.get_groups()) {
+			foreach (var code in Engine.models.languages.get_groups()) {
 				var engine_id = code == "en" ? "sherpa-onnx" : "sherpa-onnx-" + code;
 				factory.add_engine(engine_id, typeof(Engine));
 			}
@@ -212,7 +183,7 @@ namespace IBus.SherpaOnnx
 				"https://github.com/roojs/ibus-sherpa-onnx",
 				"", "ibus-sherpa-onnx"
 			);
-			models.register_engines(component);
+			Engine.models.register_engines(component);
 			if (!bus.register_component(component)) {
 				GLib.critical("Failed to register IBus component");
 				GLib.Process.exit(1);

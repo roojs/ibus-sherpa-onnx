@@ -29,8 +29,8 @@ namespace IBus.SherpaOnnx
 	 */
 	public class Engine : IBus.Engine
 	{
-		/** Process-wide recognizer + mic (set by {@link Application}; null if no model). */
-		public static Transcriber? transcriber;
+		/** Process-wide catalog (set by {@link Application}). */
+		public static Models models = new Models();
 
 		/** Process-wide prefs (''settings.ini''); set by {@link Application} / {@link focus_in}. */
 		public static Config config = new Config();
@@ -41,22 +41,31 @@ namespace IBus.SherpaOnnx
 		/** Parsed toggle modifiers from config ''general/hotkey''. */
 		public static uint toggle_mods = 0;
 
+		/** Recognizer + mic for this engine instance (null if no pack installed). */
+		private Transcriber? transcriber;
+
 		private IBus.Property prop;
 		private IBus.PropList props;
 		private uint anim_source = 0;
 		private int anim_phase = 0;
 		private bool saw_partial = false;
+		/** Last language we already notified as having no pack (avoid focus spam). */
+		private string notified_missing_lang = "";
+		/**
+		 * ASR / panel language from the active IBus engine id only
+		 * (''sherpa-onnx-es-ES'' → ''es-ES''; bare ''sherpa-onnx'' → ''en'').
+		 */
+		public string language { get; private set; default = "en"; }
 		/** Idle panel badge: ''en-v'', ''en-us-v''; same lang/region collapses (''ro-v''). */
 		private string panel_symbol = "en-v";
 
 		construct
 		{
-			var code = "en";
 			var id = this.engine_name;
 			if (id != null && id.has_prefix("sherpa-onnx-")) {
-				code = id.substring("sherpa-onnx-".length);
+				this.language = id.substring("sherpa-onnx-".length);
 			}
-			var tag = code.down().split("-", 2);
+			var tag = this.language.down().split("-", 2);
 			this.panel_symbol = tag[0] + "-v";
 			if (tag.length >= 2 && tag[0] != tag[1]) {
 				this.panel_symbol = tag[0] + "-" + tag[1] + "-v";
@@ -69,36 +78,12 @@ namespace IBus.SherpaOnnx
 			this.prop.set_symbol(new IBus.Text.from_string(this.panel_symbol));
 			this.props = new IBus.PropList();
 			this.props.append(this.prop);
-
-			if (Engine.transcriber == null) {
-				return;
-			}
-			Engine.transcriber.partial.connect((text) => {
-				if (Engine.transcriber == null || !Engine.transcriber.listening) {
-					return;
-				}
-				this.saw_partial = true;
-				this.stop_preedit_animation();
-				// Do not gate on has_focus: GNOME often delivers our toggle with
-				// has_focus=false while preedit/commit still work for this client.
-				this.update_preedit_text(new IBus.Text.from_string(text), (uint) text.length, true);
-			});
-			Engine.transcriber.endpoint.connect((text) => {
-				if (Engine.transcriber == null || !Engine.transcriber.listening) {
-					return;
-				}
-				this.saw_partial = false;
-				this.commit_text(new IBus.Text.from_string(text + " "));
-				this.hide_preedit_text();
-				if (Engine.transcriber.listening) {
-					this.start_preedit_animation();
-				}
-			});
 		}
 
 		public override void enable()
 		{
 			base.enable();
+			this.ensure_transcriber();
 			this.register_properties(this.props);
 			this.update_ui();
 		}
@@ -108,6 +93,7 @@ namespace IBus.SherpaOnnx
 			base.focus_in();
 			Engine.config = Config.load();
 			Engine.bind_hotkey();
+			this.ensure_transcriber();
 		}
 
 		/**
@@ -116,7 +102,7 @@ namespace IBus.SherpaOnnx
 		 */
 		public override void reset()
 		{
-			if (Engine.transcriber != null && Engine.transcriber.listening) {
+			if (this.transcriber != null && this.transcriber.listening) {
 				this.update_listening(false, false);
 			}
 			base.reset();
@@ -157,7 +143,7 @@ namespace IBus.SherpaOnnx
 			if (prop_name != "listening") {
 				return;
 			}
-			var on = Engine.transcriber == null || !Engine.transcriber.listening;
+			var on = this.transcriber == null || !this.transcriber.listening;
 			this.update_listening(on, true);
 		}
 
@@ -171,7 +157,7 @@ namespace IBus.SherpaOnnx
 				| IBus.ModifierType.MOD1_MASK | IBus.ModifierType.SUPER_MASK
 				| IBus.ModifierType.META_MASK | IBus.ModifierType.HYPER_MASK);
 			if (keyval == Engine.toggle_keyval && mods == Engine.toggle_mods) {
-				var on = Engine.transcriber == null || !Engine.transcriber.listening;
+				var on = this.transcriber == null || !this.transcriber.listening;
 				this.update_listening(on, true);
 				return true;
 			}
@@ -189,7 +175,7 @@ namespace IBus.SherpaOnnx
 			}
 
 			// While listening, any real key stops + commits, then the key is delivered.
-			if (Engine.transcriber != null && Engine.transcriber.listening) {
+			if (this.transcriber != null && this.transcriber.listening) {
 				this.update_listening(false, false);
 			}
 
@@ -200,11 +186,138 @@ namespace IBus.SherpaOnnx
 
 		public override void disable()
 		{
-			if (Engine.transcriber != null && Engine.transcriber.listening) {
+			if (this.transcriber != null && this.transcriber.listening) {
 				this.update_listening(false, false);
 				return;
 			}
 			this.update_ui();
+		}
+
+		/**
+		 * Load or recreate {@link transcriber} for {@link language} from ''packs.ini''.
+		 */
+		private void ensure_transcriber()
+		{
+			Engine.config = Config.load();
+			var pack = "";
+			try {
+				pack = Engine.config.packs.get_string("packs", this.language);
+			} catch (GLib.Error err) {
+			}
+			/* No prefs row yet: use an installed pack for this language’s family. */
+			if (pack == "") {
+				try {
+					var family = Engine.models.languages.get_string(this.language, "family");
+					var best_chunk = -1;
+					foreach (var pack_id in Engine.models.packs.get_groups()) {
+						if (Engine.models.packs.get_string(pack_id, "family") != family) {
+							continue;
+						}
+						var name = Engine.models.packs.get_string(pack_id, "name");
+						var dir = GLib.Path.build_filename(Engine.models.system_prefix, "models", name);
+						if (!GLib.FileUtils.test(GLib.Path.build_filename(dir, ".sha256"),
+								GLib.FileTest.IS_REGULAR)) {
+							continue;
+						}
+						var chunk = Engine.models.packs.get_integer(pack_id, "chunk");
+						if (chunk < best_chunk) {
+							continue;
+						}
+						best_chunk = chunk;
+						pack = pack_id;
+					}
+					if (pack != "") {
+						Engine.config.packs.set_string("packs", this.language, pack);
+						Engine.config.save_packs();
+					}
+				} catch (GLib.Error err) {
+				}
+			}
+			var model_dir = "";
+			if (pack != "") {
+				try {
+					var name = Engine.models.packs.get_string(pack, "name");
+					var dir = GLib.Path.build_filename(Engine.models.system_prefix, "models", name);
+					if (GLib.FileUtils.test(GLib.Path.build_filename(dir, ".sha256"),
+							GLib.FileTest.IS_REGULAR)) {
+						model_dir = dir;
+					}
+				} catch (GLib.Error err) {
+				}
+			}
+			if (pack == "" || model_dir == "") {
+				if (this.transcriber != null && this.transcriber.listening) {
+					this.transcriber.stop();
+				}
+				this.transcriber = null;
+				if (this.notified_missing_lang != this.language) {
+					this.notified_missing_lang = this.language;
+					this.notify_no_model();
+				}
+				return;
+			}
+			if (this.transcriber != null && this.transcriber.pack == pack) {
+				return;
+			}
+
+			var app = GLib.Application.get_default();
+			if (app != null) {
+				var note = new GLib.Notification("Sherpa ONNX");
+				note.set_body("Loading speech model (" + this.language + ")...");
+				app.send_notification("sherpa-onnx-loading", note);
+			}
+			if (this.transcriber != null && this.transcriber.listening) {
+				this.transcriber.stop();
+			}
+			this.transcriber = null;
+			try {
+				GLib.debug("Loading model pack %s (%s): %s", pack, this.language, model_dir);
+				var t = new Transcriber(this) {
+					model_dir = model_dir,
+					pack = pack
+				};
+				t.load();
+				this.transcriber = t;
+			} catch (GLib.Error err) {
+				GLib.critical("%s", err.message);
+				this.transcriber = null;
+			}
+			if (app != null) {
+				/* GNOME often never shows a banner that is withdrawn immediately. */
+				GLib.Timeout.add_seconds(3, () => {
+					app.withdraw_notification("sherpa-onnx-loading");
+					return GLib.Source.REMOVE;
+				});
+			}
+		}
+
+		/**
+		 * Live hypothesis from {@link Transcriber} (main loop).
+		 */
+		public void on_partial(string text)
+		{
+			if (this.transcriber == null || !this.transcriber.listening) {
+				return;
+			}
+			this.saw_partial = true;
+			this.stop_preedit_animation();
+			this.update_preedit_text(new IBus.Text.from_string(text), (uint) text.length, true);
+		}
+
+		/**
+		 * Endpoint commit from {@link Transcriber} (main loop).
+		 */
+		public void on_endpoint(string text)
+		{
+			if (this.transcriber == null || !this.transcriber.listening) {
+				return;
+			}
+			this.saw_partial = false;
+			this.commit_text(new IBus.Text.from_string(text + " "));
+			this.hide_preedit_text();
+			if (this.transcriber.listening) {
+				this.start_preedit_animation();
+			}
 		}
 
 		/**
@@ -216,18 +329,18 @@ namespace IBus.SherpaOnnx
 		 */
 		private void update_listening(bool listening, bool notify)
 		{
-			if (Engine.transcriber == null) {
-				if (listening) {
-					this.notify_no_model();
-				}
+			if (listening) {
+				this.ensure_transcriber();
+			}
+			if (this.transcriber == null) {
 				return;
 			}
-			if (listening == Engine.transcriber.listening) {
+			if (listening == this.transcriber.listening) {
 				return;
 			}
 			if (listening) {
 				GLib.debug("listening ON (has_focus=%s)", this.has_focus.to_string());
-				Engine.transcriber.start();
+				this.transcriber.start();
 				this.update_ui();
 				if (notify) {
 					this.maybe_notify_toggle();
@@ -236,8 +349,8 @@ namespace IBus.SherpaOnnx
 			}
 
 			GLib.debug("listening OFF (has_focus=%s)", this.has_focus.to_string());
-			var pending = this.saw_partial ? Engine.transcriber.last_text : "";
-			Engine.transcriber.stop();
+			var pending = this.saw_partial ? this.transcriber.last_text : "";
+			this.transcriber.stop();
 			this.stop_preedit_animation();
 			this.saw_partial = false;
 			if (pending != "") {
@@ -258,7 +371,7 @@ namespace IBus.SherpaOnnx
 		/** Panel label/symbol + preedit hint from current mic state. */
 		private void update_ui()
 		{
-			if (Engine.transcriber != null && Engine.transcriber.listening) {
+			if (this.transcriber != null && this.transcriber.listening) {
 				this.prop.set_label(new IBus.Text.from_string("Listening..."));
 				this.prop.set_symbol(new IBus.Text.from_string("..."));
 				this.prop.set_icon("audio-input-microphone");
@@ -292,7 +405,7 @@ namespace IBus.SherpaOnnx
 			this.anim_phase = 0;
 			this.show_anim_preedit();
 			this.anim_source = GLib.Timeout.add(300, () => {
-				if (Engine.transcriber == null || !Engine.transcriber.listening || this.saw_partial) {
+				if (this.transcriber == null || !this.transcriber.listening || this.saw_partial) {
 					this.anim_source = 0;
 					return GLib.Source.REMOVE;
 				}
@@ -336,11 +449,11 @@ namespace IBus.SherpaOnnx
 				return;
 			}
 			var app = GLib.Application.get_default();
-			if (app == null || Engine.transcriber == null) {
+			if (app == null || this.transcriber == null) {
 				return;
 			}
 			var note = new GLib.Notification("Sherpa ONNX");
-			if (Engine.transcriber.listening) {
+			if (this.transcriber.listening) {
 				note.set_body("Listening...");
 			} else {
 				note.set_body("Mic off");
@@ -349,8 +462,8 @@ namespace IBus.SherpaOnnx
 		}
 
 		/**
-		 * Always notify when the user tries to dictate with no model (not gated
-		 * by the listening-notifications pref). Action opens Preferences.
+		 * Always notify when this language has no usable pack (not gated by the
+		 * listening-notifications pref). Action opens Preferences.
 		 */
 		private void notify_no_model()
 		{
@@ -359,7 +472,7 @@ namespace IBus.SherpaOnnx
 				return;
 			}
 			var note = new GLib.Notification("Sherpa ONNX");
-			note.set_body("No speech model installed");
+			note.set_body("No speech model for " + this.language);
 			note.set_default_action("app.open-preferences");
 			note.add_button("Open Preferences", "app.open-preferences");
 			app.send_notification("sherpa-onnx-no-model", note);

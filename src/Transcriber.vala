@@ -21,22 +21,17 @@ namespace IBus.SherpaOnnx
 	/**
 	 * Streaming mic ASR: GStreamer capture → sherpa-onnx online transducer.
 	 *
-	 * Create loads the recognizer (slow). {@link start} / {@link stop} only
-	 * flip the mic pipeline. Decode runs on the GStreamer thread;
-	 * {@link partial} / {@link endpoint} always fire on the main loop via
-	 * {@link GLib.Idle.add}.
-	 *
-	 * == Usage Examples ==
-	 *
-	 * === CLI stdout ===
-	 *
 	 * {{{
-	 *   Gst.init(ref args);
-	 *   var transcriber = new IBus.SherpaOnnx.Transcriber(model_dir, "ja-JP");
-	 *   transcriber.partial.connect((t) => { stdout.printf("\r%s", t); stdout.flush(); });
-	 *   transcriber.endpoint.connect((t) => { stdout.printf("\n"); stdout.flush(); });
-	 *   transcriber.start();
+	 *   var t = new Transcriber(engine) {
+	 *     model_dir = dir,
+	 *     pack = pack
+	 *   };
+	 *   t.load();
 	 * }}}
+	 *
+	 * CLI/GTK pass the stub {@link Engine}. Also emits {@link partial} /
+	 * {@link endpoint} for signal clients.
+	 * {@link load} is slow; {@link start} / {@link stop} only flip the mic.
 	 *
 	 * @since 0.2
 	 */
@@ -49,9 +44,21 @@ namespace IBus.SherpaOnnx
 		private bool partial_idle_queued = false;
 		private int partial_updates = 0;
 		private int64 segment_start_us = 0;
-		private GLib.Mutex emit_lock;
+		private GLib.Mutex emit_lock = GLib.Mutex();
 		/** Stream ''language'' option; empty skips ''set_option'' (English-only packs). */
 		private string stream_language = "";
+
+		/** Directory with int8 ONNX + tokens.txt (set before {@link load}). */
+		public string model_dir { get; set; default = ""; }
+
+		/** Catalog pack id (IBus reuse checks); empty for CLI/GTK. */
+		public string pack { get; set; default = ""; }
+
+		/** Catalog language code; English codes skip stream option. */
+		public string language { get; set; default = ""; }
+
+		/** Owning engine (IBus or CLI/GTK stub). */
+		public unowned Engine engine { get; construct; }
 
 		/** True while the capture pipeline is PLAYING. */
 		public bool listening { get; private set; default = false; }
@@ -86,18 +93,27 @@ namespace IBus.SherpaOnnx
 		public signal void endpoint(string text);
 
 		/**
-		 * Load Nemotron online recognizer from ''model_dir'' (encoder/decoder/joiner/tokens).
+		 * @param engine owning engine (IBus or stub)
+		 */
+		public Transcriber(Engine engine)
+		{
+			GLib.Object(
+				engine: engine
+			);
+			this.language = engine.language;
+		}
+
+		/**
+		 * Load Nemotron online recognizer from {@link model_dir}.
 		 *
-		 * @param model_dir directory with int8 ONNX + tokens.txt
-		 * @param language prefs ''general/language='' (catalog code); English codes skip stream option
 		 * @throws GLib.IOError if recognizer, stream, or pipeline cannot be created
 		 */
-		public Transcriber(string model_dir, string language = "") throws GLib.Error
+		public void load() throws GLib.Error
 		{
-			this.emit_lock = GLib.Mutex();
 			this.segment_start_us = GLib.get_monotonic_time();
-			if (language != "" && language != "en" && !language.has_prefix("en-")) {
-				this.stream_language = language;
+			this.stream_language = "";
+			if (this.language != "" && this.language != "en" && !this.language.has_prefix("en-")) {
+				this.stream_language = this.language;
 			}
 
 			var saved_stderr = Posix.dup(Posix.STDERR_FILENO);
@@ -113,11 +129,11 @@ namespace IBus.SherpaOnnx
 				},
 				model_config = global::SherpaOnnx.OnlineModelConfig() {
 					transducer = global::SherpaOnnx.OnlineTransducerModelConfig() {
-						encoder = GLib.Path.build_filename(model_dir, "encoder.int8.onnx"),
-						decoder = GLib.Path.build_filename(model_dir, "decoder.int8.onnx"),
-						joiner = GLib.Path.build_filename(model_dir, "joiner.int8.onnx"),
+						encoder = GLib.Path.build_filename(this.model_dir, "encoder.int8.onnx"),
+						decoder = GLib.Path.build_filename(this.model_dir, "decoder.int8.onnx"),
+						joiner = GLib.Path.build_filename(this.model_dir, "joiner.int8.onnx"),
 					},
-					tokens = GLib.Path.build_filename(model_dir, "tokens.txt"),
+					tokens = GLib.Path.build_filename(this.model_dir, "tokens.txt"),
 					num_threads = (int32) GLib.get_num_processors().clamp(1, 4),
 					provider = "cpu",
 				},
@@ -135,7 +151,7 @@ namespace IBus.SherpaOnnx
 
 			if (this.recognizer == null) {
 				throw new GLib.IOError.FAILED(
-					"Failed to create online recognizer (check model paths under %s)", model_dir);
+					"Failed to create online recognizer (check model paths under %s)", this.model_dir);
 			}
 
 			this.stream = this.recognizer.create_stream();
@@ -213,6 +229,7 @@ namespace IBus.SherpaOnnx
 						var copy = this.pending_partial;
 						this.partial_idle_queued = false;
 						this.emit_lock.unlock();
+						this.engine.on_partial(copy);
 						this.partial(copy);
 						return GLib.Source.REMOVE;
 					});
@@ -252,6 +269,7 @@ namespace IBus.SherpaOnnx
 				this.last_audio_s = audio_s;
 				this.last_wall_s = wall_s;
 				this.last_partial_count = partials;
+				this.engine.on_endpoint(commit);
 				this.endpoint(commit);
 				return GLib.Source.REMOVE;
 			});

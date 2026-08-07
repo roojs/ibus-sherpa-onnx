@@ -1,6 +1,7 @@
 # libsherpa-onnx-c-api: undefined `knf::*` at link and runtime
 
-**Status:** ✔️ FIXED (packaging rebuilt/reinstalled) — await user ✅  
+**Status:** ✔️ DONE  
+
 **Reported from:** `ibus-sherpa-onnx` Vala stdout PoC  
 **Package:** `libsherpa-onnx-c-api1` / `-dev` `1.13.4-1`
 
@@ -21,8 +22,4 @@
 
 ## Next
 
-⏳ User ✅ if mic transcription looks good on a longer interactive run:
-
-```bash
-./build/sherpa-onnx-mic
-```
+✔️ User ✅ — closed.

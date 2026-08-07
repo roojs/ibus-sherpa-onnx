@@ -14,6 +14,11 @@
 - Polkit install allowlist includes multilingual pack directory names.
 - Mic capture: WebRTC AGC (`webrtcdsp` gain-control) before ASR; needs
   gstreamer plugins-bad.
+- Model download verifies SHA-256 via GitHub Releases API `digest` (no
+  packaged `data/checksums/` sidecars).
+- ASR language from engine id (`sherpa-onnx-es-ES`) or prefs when bare
+  `sherpa-onnx`.
+- Preferences window widened so language combo labels fit.
 
 ## 0.1.0 - 2026-08-07
 

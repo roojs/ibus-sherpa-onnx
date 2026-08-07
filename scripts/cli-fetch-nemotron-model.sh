@@ -31,18 +31,27 @@ MODEL_LINK="$USER_CONFIG/model"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/ibus-sherpa-onnx/download"
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-SUMS_DIR="/usr/share/ibus-sherpa-onnx/checksums"
-if [ ! -d "$SUMS_DIR" ]; then
-  SUMS_DIR="$SCRIPT_DIR/../data/checksums"
-fi
-EXPECTED_SUM="$SUMS_DIR/${DIR_NAME}.sha256"
-if [ ! -f "$EXPECTED_SUM" ]; then
-  echo "No checksum file for $DIR_NAME (looked in $SUMS_DIR)" >&2
-  exit 1
-fi
-EXPECT_HASH=$(awk '{print $1; exit}' "$EXPECTED_SUM")
+
+echo "Fetching GitHub release digest for $ARCHIVE ..."
+EXPECT_HASH=$(curl -fsSL \
+  -H 'Accept: application/vnd.github+json' \
+  -H 'User-Agent: ibus-sherpa-onnx' \
+  'https://api.github.com/repos/k2-fsa/sherpa-onnx/releases/tags/asr-models' \
+  | python3 -c "
+import json, sys
+want = sys.argv[1]
+for a in json.load(sys.stdin).get('assets', []):
+    if a.get('name') != want:
+        continue
+    d = a.get('digest') or ''
+    if not d.startswith('sha256:'):
+        sys.exit('digest missing or not sha256 for ' + want)
+    print(d[len('sha256:'):])
+    sys.exit(0)
+sys.exit('asset not found: ' + want)
+" "$ARCHIVE")
 if [ -z "$EXPECT_HASH" ]; then
-  echo "Empty checksum file: $EXPECTED_SUM" >&2
+  echo "Empty digest from GitHub API for $ARCHIVE" >&2
   exit 1
 fi
 
