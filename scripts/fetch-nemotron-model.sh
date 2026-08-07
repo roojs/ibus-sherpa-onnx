@@ -38,7 +38,7 @@ cd "$MODELS_DIR"
 
 if [ -f "$DIR_NAME/encoder.int8.onnx" ] && [ -f "$DIR_NAME/tokens.txt" ]; then
   echo "Model already unpacked: $MODELS_DIR/$DIR_NAME"
-  echo "Run: ./build/stt-poc $MODELS_DIR/$DIR_NAME"
+  echo "Run: ./build/sherpa-onnx-mic $MODELS_DIR/$DIR_NAME"
   exit 0
 fi
 
@@ -57,5 +57,5 @@ tar --no-same-owner -xvf "$ARCHIVE"
 echo "Done: $MODELS_DIR/$DIR_NAME"
 ls -lh "$DIR_NAME"
 echo
-echo "Run: ./build/stt-poc models/$DIR_NAME"
-echo "With stats: ./build/stt-poc --stats models/$DIR_NAME"
+echo "Run: ./build/sherpa-onnx-mic models/$DIR_NAME"
+echo "With stats: ./build/sherpa-onnx-mic --stats models/$DIR_NAME"

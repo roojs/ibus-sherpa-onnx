@@ -1,8 +1,8 @@
 /**
- * Sideline GTK composer + mic STT hello world (see docs/plans/0.3 for IBus).
+ * Sideline GTK composer + mic demo (see docs/plans/0.3 for IBus).
  *
  * Usage:
- *   stt-gtk-poc [model-dir]
+ *   sherpa-onnx-gtk [model-dir]
  *
  * Default model-dir:
  *   models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25
@@ -21,7 +21,7 @@ int main (string[] args)
 		model_dir = args[i];
 	}
 
-	var app = new Adw.Application ("com.roojs.stt-gtk-poc", GLib.ApplicationFlags.DEFAULT_FLAGS);
+	var app = new Adw.Application ("com.roojs.sherpa-onnx-gtk", GLib.ApplicationFlags.DEFAULT_FLAGS);
 	app.activate.connect (() => {
 		var css = new Gtk.CssProvider ();
 		css.load_from_path ("data/style.css");
@@ -31,12 +31,12 @@ int main (string[] args)
 			Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
 		);
 
-		SttPoc.SttEngine engine;
+		IBus.SherpaOnnx.Transcriber transcriber;
 		try {
-			engine = new SttPoc.SttEngine (model_dir);
+			transcriber = new IBus.SherpaOnnx.Transcriber (model_dir);
 		} catch (GLib.Error err) {
 			var fail = new Adw.ApplicationWindow (app) {
-				title = "STT PoC",
+				title = "Sherpa ONNX",
 				default_width = 420,
 				default_height = 120
 			};
@@ -52,7 +52,7 @@ int main (string[] args)
 		}
 
 		var window = new Adw.ApplicationWindow (app) {
-			title = "STT PoC",
+			title = "Sherpa ONNX",
 			default_width = 520,
 			default_height = 200
 		};
@@ -61,7 +61,7 @@ int main (string[] args)
 		var toolbar = new Adw.ToolbarView ();
 		toolbar.add_top_bar (header);
 
-		var input = new SttPoc.ComposerInput ();
+		var input = new IBus.SherpaOnnx.ComposerInput ();
 		input.scrolled.max_height = 160;
 
 		/* Committed utterances + active partial (main loop only). */
@@ -69,49 +69,49 @@ int main (string[] args)
 		string[] active = {""};
 
 		input.mic_clicked.connect (() => {
-			if (engine.listening) {
+			if (transcriber.listening) {
 				return;
 			}
 			var existing = input.text ();
 			committed[0] = existing.length > 0 ? existing + " " : "";
 			active[0] = "";
-			engine.start ();
+			transcriber.start ();
 			input.set_listening (true);
 		});
 		input.stop_requested.connect (() => {
-			if (!engine.listening) {
+			if (!transcriber.listening) {
 				return;
 			}
-			engine.stop ();
+			transcriber.stop ();
 			input.set_listening (false);
 		});
 
 		var start_action = new GLib.SimpleAction ("start-listen", null);
 		start_action.activate.connect (() => {
-			if (engine.listening) {
+			if (transcriber.listening) {
 				return;
 			}
 			var existing = input.text ();
 			committed[0] = existing.length > 0 ? existing + " " : "";
 			active[0] = "";
-			engine.start ();
+			transcriber.start ();
 			input.set_listening (true);
 		});
 		app.add_action (start_action);
 		app.set_accels_for_action ("app.start-listen", { "<Control><Shift>space" });
 
-		engine.partial.connect ((text) => {
+		transcriber.partial.connect ((text) => {
 			active[0] = text;
 			input.update_entry (committed[0] + active[0]);
 		});
-		engine.endpoint.connect ((text) => {
+		transcriber.endpoint.connect ((text) => {
 			committed[0] = committed[0] + text + " ";
 			active[0] = "";
 			input.update_entry (committed[0]);
 		});
 
 		window.close_request.connect (() => {
-			engine.stop ();
+			transcriber.stop ();
 			return false;
 		});
 

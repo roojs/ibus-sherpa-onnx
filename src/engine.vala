@@ -16,12 +16,12 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-namespace SttPoc
+namespace IBus.SherpaOnnx
 {
 	/**
 	 * IBus input-method engine for local speech dictation.
 	 *
-	 * Shares one process-wide {@link SttEngine}. A remappable toggle hotkey
+	 * Shares one process-wide {@link Transcriber}. A remappable toggle hotkey
 	 * starts/stops the mic. Partials become preedit; endpoints
 	 * {@link IBus.Engine.commit_text} into the focused client. Other keys
 	 * pass through.
@@ -31,35 +31,35 @@ namespace SttPoc
 	 * === Register from the engine process ===
 	 *
 	 * {{{
-	 *   // SttIbusApplication sets stt + toggle_*, then:
-	 *   factory.add_engine("stt-speech", typeof(SttPoc.SttIbusEngine));
+	 *   // Application sets asr + toggle_*, then:
+	 *   factory.add_engine("sherpa-onnx", typeof(IBus.SherpaOnnx.Engine));
 	 *   bus.register_component(component);
 	 * }}}
 	 *
 	 * @since 0.3
 	 */
-	public class SttIbusEngine : IBus.Engine
+	public class Engine : IBus.Engine
 	{
-		/** Process-wide recognizer + mic (set by {@link SttIbusApplication}). */
-		public static SttEngine stt;
+		/** Process-wide recognizer + mic (set by {@link Application}). */
+		public static Transcriber transcriber;
 
-		/** Toggle accelerator keysym (set by {@link SttIbusApplication}). */
+		/** Toggle accelerator keysym (set by {@link Application}). */
 		public static uint toggle_keyval = 0;
 
-		/** Toggle accelerator modifiers (set by {@link SttIbusApplication}). */
+		/** Toggle accelerator modifiers (set by {@link Application}). */
 		public static uint toggle_mods = 0;
 
 		construct
 		{
-			SttIbusEngine.stt.partial.connect((text) => {
-				if (!this.has_focus || !SttIbusEngine.stt.listening) {
+			Engine.transcriber.partial.connect((text) => {
+				if (!this.has_focus || !Engine.transcriber.listening) {
 					return;
 				}
 				this.update_preedit_text(
 					new IBus.Text.from_string(text), (uint) text.length, true
 				);
 			});
-			SttIbusEngine.stt.endpoint.connect((text) => {
+			Engine.transcriber.endpoint.connect((text) => {
 				if (!this.has_focus) {
 					return;
 				}
@@ -90,16 +90,16 @@ namespace SttPoc
 				| IBus.ModifierType.META_MASK
 				| IBus.ModifierType.HYPER_MASK
 			);
-			if (keyval != SttIbusEngine.toggle_keyval || mods != SttIbusEngine.toggle_mods) {
+			if (keyval != Engine.toggle_keyval || mods != Engine.toggle_mods) {
 				return false;
 			}
 
-			if (SttIbusEngine.stt.listening) {
-				SttIbusEngine.stt.stop();
+			if (Engine.transcriber.listening) {
+				Engine.transcriber.stop();
 				this.hide_preedit_text();
 				return true;
 			}
-			SttIbusEngine.stt.start();
+			Engine.transcriber.start();
 			return true;
 		}
 
@@ -108,10 +108,10 @@ namespace SttPoc
 		 */
 		public override void disable()
 		{
-			if (!SttIbusEngine.stt.listening) {
+			if (!Engine.transcriber.listening) {
 				return;
 			}
-			SttIbusEngine.stt.stop();
+			Engine.transcriber.stop();
 			this.hide_preedit_text();
 		}
 	}

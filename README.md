@@ -1,10 +1,10 @@
-# gtk-speechtotext-poc
+# ibus-sherpa-onnx
 
 Vala proof-of-concept: local streaming speech-to-text via **sherpa-onnx** (Nemotron).
 
-**Main path (in progress):** an **IBus** input-method engine so dictation goes into the focused app — see [`docs/plans/0.3-vala-ibus-stt-engine.md`](docs/plans/0.3-vala-ibus-stt-engine.md).
+**Main path (in progress):** an **IBus** input-method engine so dictation goes into the focused app — see [`docs/plans/0.3-vala-ibus-sherpa-onnx.md`](docs/plans/0.3-vala-ibus-sherpa-onnx.md).
 
-**Also available:** CLI stdout demo, and a **sideline** GTK composer window (`src/gtk/`).
+**Also available:** CLI stdout demo (`src/cli/`), and a **sideline** GTK composer window (`src/gtk/`).
 
 ## Demo
 
@@ -39,24 +39,33 @@ sudo apt install ./libsherpa-onnx-c-api1_*.deb ./libsherpa-onnx-c-api-dev_*.deb
 ```bash
 ./scripts/fetch-nemotron-model.sh   # default: 560 ms chunk
 meson setup build && ninja -C build
-./build/stt-poc          # stdout CLI
-./build/stt-gtk-poc      # sideline GTK composer + mic (Ctrl+Shift+Space; Escape to stop)
+./build/ibus-engine-sherpa-onnx      # IBus engine (needs ~/.config/ibus-sherpa-onnx/model)
+./build/sherpa-onnx-mic              # sideline stdout CLI (src/cli/)
+./build/sherpa-onnx-gtk              # sideline GTK composer demo (src/gtk/)
+```
+
+Model for the IBus engine (directory or symlink):
+
+```bash
+mkdir -p ~/.config/ibus-sherpa-onnx
+ln -sfn "$PWD/models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25" \
+  ~/.config/ibus-sherpa-onnx/model
 ```
 
 Optional longer-context model (same size, higher latency, often more accurate):
 
 ```bash
 ./scripts/fetch-nemotron-model.sh 1120
-./build/stt-poc models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-1120ms-int8-2026-04-25
+./build/sherpa-onnx-mic models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-1120ms-int8-2026-04-25
 ```
 
-IBus engine install/run steps land with plan 0.3 Phase 3 (needs `libibus-1.0-dev` first — see that plan).
+Debian packaging / GNOME input-source install is plan 0.3 Phase 3.
 
 ## Plans
 
 - Stage 1 (stdout): [`docs/plans/0.1-vala-sherpa-stdout-poc.md`](docs/plans/0.1-vala-sherpa-stdout-poc.md)
-- Stage 2 (GTK composer sideline): [`docs/plans/0.2-vala-gtk-composer-stt.md`](docs/plans/0.2-vala-gtk-composer-stt.md)
-- Stage 3 (IBus engine — main path): [`docs/plans/0.3-vala-ibus-stt-engine.md`](docs/plans/0.3-vala-ibus-stt-engine.md)
+- Stage 2 (GTK composer sideline): [`docs/plans/0.2-vala-gtk-composer.md`](docs/plans/0.2-vala-gtk-composer.md)
+- Stage 3 (IBus engine — main path): [`docs/plans/0.3-vala-ibus-sherpa-onnx.md`](docs/plans/0.3-vala-ibus-sherpa-onnx.md)
 
 ## Artificial Intelligence Usage
 

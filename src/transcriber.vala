@@ -16,10 +16,10 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-namespace SttPoc
+namespace IBus.SherpaOnnx
 {
 	/**
-	 * Streaming mic STT: GStreamer capture → sherpa-onnx online transducer.
+	 * Streaming mic ASR: GStreamer capture → sherpa-onnx online transducer.
 	 *
 	 * Create loads the recognizer (slow). {@link start} / {@link stop} only
 	 * flip the mic pipeline. Decode runs on the GStreamer thread;
@@ -32,18 +32,18 @@ namespace SttPoc
 	 *
 	 * {{{
 	 *   Gst.init(ref args);
-	 *   var engine = new SttPoc.SttEngine(model_dir);
-	 *   engine.partial.connect((t) => { stdout.printf("\r%s", t); stdout.flush(); });
-	 *   engine.endpoint.connect((t) => { stdout.printf("\n"); stdout.flush(); });
-	 *   engine.start();
+	 *   var transcriber = new IBus.SherpaOnnx.Transcriber(model_dir);
+	 *   transcriber.partial.connect((t) => { stdout.printf("\r%s", t); stdout.flush(); });
+	 *   transcriber.endpoint.connect((t) => { stdout.printf("\n"); stdout.flush(); });
+	 *   transcriber.start();
 	 * }}}
 	 *
 	 * @since 0.2
 	 */
-	public class SttEngine : GLib.Object
+	public class Transcriber : GLib.Object
 	{
-		private SherpaOnnx.OnlineRecognizer recognizer;
-		private SherpaOnnx.OnlineStream stream;
+		private global::SherpaOnnx.OnlineRecognizer recognizer;
+		private global::SherpaOnnx.OnlineStream stream;
 		private Gst.Pipeline pipeline;
 		private string last_text = "";
 		private string pending_partial = "";
@@ -87,7 +87,7 @@ namespace SttPoc
 		 * @param model_dir directory with int8 ONNX + tokens.txt
 		 * @throws GLib.IOError if recognizer, stream, or pipeline cannot be created
 		 */
-		public SttEngine(string model_dir) throws GLib.Error
+		public Transcriber(string model_dir) throws GLib.Error
 		{
 			this.emit_lock = GLib.Mutex();
 			this.segment_start_us = GLib.get_monotonic_time();
@@ -98,13 +98,13 @@ namespace SttPoc
 				Posix.dup2(devnull, Posix.STDERR_FILENO);
 				Posix.close(devnull);
 			}
-			this.recognizer = new SherpaOnnx.OnlineRecognizer(SherpaOnnx.OnlineRecognizerConfig() {
-				feat_config = SherpaOnnx.FeatureConfig() {
+			this.recognizer = new global::SherpaOnnx.OnlineRecognizer(global::SherpaOnnx.OnlineRecognizerConfig() {
+				feat_config = global::SherpaOnnx.FeatureConfig() {
 					sample_rate = 16000,
 					feature_dim = 80,
 				},
-				model_config = SherpaOnnx.OnlineModelConfig() {
-					transducer = SherpaOnnx.OnlineTransducerModelConfig() {
+				model_config = global::SherpaOnnx.OnlineModelConfig() {
+					transducer = global::SherpaOnnx.OnlineTransducerModelConfig() {
 						encoder = GLib.Path.build_filename(model_dir, "encoder.int8.onnx"),
 						decoder = GLib.Path.build_filename(model_dir, "decoder.int8.onnx"),
 						joiner = GLib.Path.build_filename(model_dir, "joiner.int8.onnx"),

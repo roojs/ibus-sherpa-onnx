@@ -16,7 +16,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-namespace SttPoc
+namespace IBus.SherpaOnnx
 {
 	/**
 	 * Growable composer TextView with a mic on the right (OLLMchat ChatInput
@@ -30,7 +30,7 @@ namespace SttPoc
 	 * === Start / stop chrome ===
 	 *
 	 * {{{
-	 *   var input = new SttPoc.ComposerInput();
+	 *   var input = new IBus.SherpaOnnx.ComposerInput();
 	 *   input.mic_clicked.connect(() => { engine.start(); input.set_listening(true); });
 	 *   input.stop_requested.connect(() => { engine.stop(); input.set_listening(false); });
 	 * }}}

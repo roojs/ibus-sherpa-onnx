@@ -16,7 +16,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-namespace SttPoc
+namespace IBus.SherpaOnnx
 {
 	/**
 	 * App-owned vertical scroll shell (GTK {@link Gtk.ScrolledWindow} model,
@@ -40,7 +40,7 @@ namespace SttPoc
 	 * === Composer TextView ===
 	 *
 	 * {{{
-	 *   var scroll = new SttPoc.ScrolledView();
+	 *   var scroll = new IBus.SherpaOnnx.ScrolledView();
 	 *   scroll.max_height = half_chat;
 	 *   scroll.set_child(text_view); // auto-sizes on buffer.changed
 	 * }}}

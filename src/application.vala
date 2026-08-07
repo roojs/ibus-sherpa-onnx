@@ -16,7 +16,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-namespace SttPoc
+namespace IBus.SherpaOnnx
 {
 	private static GLib.FileStream? debug_log_file = null;
 	private static bool debug_log_in_progress = false;
@@ -28,7 +28,7 @@ namespace SttPoc
 	public static bool debug_critical_enabled = false;
 
 	/**
-	 * Writes to ''~/.cache/stt-ibus/{app_id}.debug.log'' (and stderr when debug is on).
+	 * Writes to ''~/.cache/ibus-sherpa-onnx/{app_id}.debug.log'' (and stderr when debug is on).
 	 *
 	 * Same pattern as RooTerm / OLLMchat ''ApplicationInterface.debug_log''.
 	 *
@@ -56,7 +56,7 @@ namespace SttPoc
 		debug_log_in_progress = true;
 		if (debug_log_file == null) {
 			var log_dir = GLib.Path.build_filename(
-				GLib.Environment.get_user_cache_dir(), "stt-ibus"
+				GLib.Environment.get_user_cache_dir(), "ibus-sherpa-onnx"
 			);
 			var log_file_path = GLib.Path.build_filename(log_dir, app_id + ".debug.log");
 			if (!GLib.FileUtils.test(log_dir, GLib.FileTest.IS_DIR)) {
@@ -77,10 +77,10 @@ namespace SttPoc
 	}
 
 	/**
-	 * ''GLib.Application'' host for the Speech STT IBus engine.
+	 * ''GLib.Application'' host for the Sherpa ONNX IBus engine.
 	 *
-	 * Model path is ''~/.config/stt-ibus/model'' — a directory, or a symlink
-	 * to one. Toggle hotkey: ''~/.config/stt-ibus/hotkey''. ''--debug'' enables
+	 * Model path is ''~/.config/ibus-sherpa-onnx/model'' — a directory, or a symlink
+	 * to one. Toggle hotkey: ''~/.config/ibus-sherpa-onnx/hotkey''. ''--debug'' enables
 	 * stderr logging (RooTerm / OLLMchat pattern).
 	 *
 	 * == Usage Examples ==
@@ -88,14 +88,14 @@ namespace SttPoc
 	 * === Point config at a fetched model ===
 	 *
 	 * {{{
-	 *   mkdir -p ~/.config/stt-ibus
-	 *   ln -sfn "$PWD/models/sherpa-onnx-nemotron-…" ~/.config/stt-ibus/model
-	 *   ./build/stt-ibus-engine --debug
+	 *   mkdir -p ~/.config/ibus-sherpa-onnx
+	 *   ln -sfn "$PWD/models/sherpa-onnx-nemotron-…" ~/.config/ibus-sherpa-onnx/model
+	 *   ./build/ibus-engine-sherpa-onnx --debug
 	 * }}}
 	 *
 	 * @since 0.3
 	 */
-	public class SttIbusApplication : GLib.Application
+	public class Application : GLib.Application
 	{
 		public static bool opt_debug = false;
 		public static bool opt_debug_critical = false;
@@ -110,15 +110,15 @@ namespace SttPoc
 		/**
 		 * Create the application and install the debug log handler.
 		 */
-		public SttIbusApplication()
+		public Application()
 		{
-			Object(
-				application_id: "org.roojs.stt-ibus-engine",
+			GLib.Object(
+				application_id: "org.roojs.ibus-sherpa-onnx",
 				flags: GLib.ApplicationFlags.DEFAULT_FLAGS | GLib.ApplicationFlags.NON_UNIQUE
 			);
 			this.add_main_option_entries(options);
 			GLib.Log.set_default_handler((dom, lvl, msg) => {
-				SttPoc.debug_log("stt-ibus-engine", dom != null ? dom : "", lvl, msg);
+				debug_log("ibus-sherpa-onnx", dom != null ? dom : "", lvl, msg);
 			});
 		}
 
@@ -128,8 +128,8 @@ namespace SttPoc
 		public override void startup()
 		{
 			base.startup();
-			SttPoc.debug_on = opt_debug;
-			SttPoc.debug_critical_enabled = opt_debug_critical;
+			debug_on = opt_debug;
+			debug_critical_enabled = opt_debug_critical;
 		}
 
 		/**
@@ -138,7 +138,7 @@ namespace SttPoc
 		public override void activate()
 		{
 			var model_dir = GLib.Path.build_filename(
-				GLib.Environment.get_user_config_dir(), "stt-ibus", "model"
+				GLib.Environment.get_user_config_dir(), "ibus-sherpa-onnx", "model"
 			);
 			var model_file = GLib.File.new_for_path(model_dir);
 			if (model_file.query_file_type(GLib.FileQueryInfoFlags.NONE) != GLib.FileType.DIRECTORY) {
@@ -150,7 +150,7 @@ namespace SttPoc
 
 			GLib.debug("Loading model: %s", model_dir);
 			try {
-				SttIbusEngine.stt = new SttEngine(model_dir);
+				Engine.transcriber = new Transcriber(model_dir);
 			} catch (GLib.Error err) {
 				GLib.critical("%s", err.message);
 				GLib.Process.exit(1);
@@ -158,7 +158,7 @@ namespace SttPoc
 
 			var hotkey = "Ctrl+Shift+Space";
 			var hotkey_path = GLib.Path.build_filename(
-				GLib.Environment.get_user_config_dir(), "stt-ibus", "hotkey"
+				GLib.Environment.get_user_config_dir(), "ibus-sherpa-onnx", "hotkey"
 			);
 			try {
 				string contents;
@@ -190,8 +190,8 @@ namespace SttPoc
 				IBus.accelerator_parse("<Control><Shift>space", out keyval, out accel_mods);
 				GLib.warning("Could not parse hotkey '%s'; using Control+Shift+space", hotkey);
 			}
-			SttIbusEngine.toggle_keyval = keyval;
-			SttIbusEngine.toggle_mods = (uint) accel_mods;
+			Engine.toggle_keyval = keyval;
+			Engine.toggle_mods = (uint) accel_mods;
 
 			var bus = new IBus.Bus();
 			if (!bus.is_connected()) {
@@ -200,15 +200,15 @@ namespace SttPoc
 			}
 
 			var factory = new IBus.Factory(bus.get_connection());
-			factory.add_engine("stt-speech", typeof(SttIbusEngine));
+			factory.add_engine("sherpa-onnx", typeof(Engine));
 
 			var component = new IBus.Component(
-				"org.roojs.IBus.SttSpeech", "Speech STT", "0.1.0", "LGPL",
-				"Alan Knowles <alan@roojs.com>", "https://github.com/roojs/gtk-speechtotext-poc",
-				"", "stt-ibus"
+				"org.roojs.IBus.SherpaOnnx", "Sherpa ONNX", "0.1.0", "LGPL",
+				"Alan Knowles <alan@roojs.com>", "https://github.com/roojs/ibus-sherpa-onnx",
+				"", "ibus-sherpa-onnx"
 			);
 			component.add_engine(new IBus.EngineDesc(
-				"stt-speech", "Speech STT", "Local speech-to-text dictation (PoC)",
+				"sherpa-onnx", "Sherpa ONNX", "Local speech-to-text dictation (PoC)",
 				"en", "LGPL", "Alan Knowles <alan@roojs.com>", "", "us"
 			));
 			if (!bus.register_component(component)) {
@@ -216,7 +216,7 @@ namespace SttPoc
 				GLib.Process.exit(1);
 			}
 
-			GLib.debug("Registered stt-speech. Toggle=%s", hotkey);
+			GLib.debug("Registered sherpa-onnx. Toggle=%s", hotkey);
 			this.hold();
 		}
 	}
