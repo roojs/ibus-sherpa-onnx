@@ -19,7 +19,7 @@
 namespace IBus.SherpaOnnx.Setup
 {
 	/**
-	 * Searchable {@link Adw.ComboRow} of ASR languages (ICU labels via thin icu-i18n.vapi).
+	 * Searchable {@link Adw.ComboRow} of ASR languages (ICU labels via thin icu-uc.vapi).
 	 *
 	 * Stores ''general/language='' (catalog code). Search matches display names.
 	 *

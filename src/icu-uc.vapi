@@ -1,5 +1,5 @@
 /*
- * Satisfies valac --pkg=icu-i18n from dependency('icu-i18n').
+ * Satisfies valac --pkg=icu-uc from dependency('icu-uc').
  * Public API is src/Icu.vala (UTF-8 display names).
  */
 

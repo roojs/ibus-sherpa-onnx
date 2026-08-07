@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2026 Alan Knowles <alan@roojs.com>
  *
- * UTF-8 wrappers over ICU uloc (thin pkg stub: icu-i18n.vapi).
+ * UTF-8 wrappers over ICU uloc (thin pkg stub: icu-uc.vapi).
  */
 
 namespace Icu

@@ -121,8 +121,10 @@ adw_dep = dependency('libadwaita-1')
 soup_dep = dependency('libsoup-3.0')
 json_dep = dependency('json-glib-1.0')
 archive_dep = dependency('libarchive')
-# Hand-written binding: src/icu-i18n.vapi + src/Icu.vala (UTF-8 API).
-icu_dep = dependency('icu-i18n')
+# Hand-written binding: src/icu-uc.vapi + src/Icu.vala (UTF-8 API).
+# Use icu-uc (not icu-i18n): uloc_* lives in libicuuc; Fedora's icu-i18n.pc
+# does not pull -licuuc into the shared link line under --as-needed.
+icu_dep = dependency('icu-uc')
 gee_dep = dependency('gee-0.8')
 
 # IBus Preferences / component <setup> (RooTerm Dialog naming: Preferences, Row*).

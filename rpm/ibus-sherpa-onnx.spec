@@ -80,9 +80,13 @@ fi
 %{_bindir}/ibus-setup-sherpa-onnx
 %{_datadir}/ibus/component/sherpa-onnx.xml
 %{_datadir}/applications/ibus-setup-sherpa-onnx.desktop
+%{_datadir}/applications/org.roojs.ibus-sherpa-onnx.desktop
 %{_datadir}/ibus-sherpa-onnx/
 %{_datadir}/polkit-1/actions/org.roojs.ibus-sherpa-onnx.policy
 
 %changelog
+* Fri Aug 07 2026 Alan Knowles <alan@roojs.com> - 0.2.0-1
+- Multilingual engines, packs.ini, ICU language labels, notification desktop.
+
 * Fri Aug 07 2026 Alan Knowles <alan@roojs.com> - 0.1.0-1
 - Initial Fedora package.
