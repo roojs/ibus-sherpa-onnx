@@ -2,13 +2,12 @@
  * IBus Sherpa ONNX engine process entry.
  *
  * {{{
- *   mkdir -p ~/.config/ibus-sherpa-onnx
- *   ln -sfn "$PWD/models/sherpa-onnx-nemotron-…" ~/.config/ibus-sherpa-onnx/model
+ *   ./scripts/fetch-nemotron-model.sh
  *   ./build/ibus-engine-sherpa-onnx
  * }}}
  *
- * ''~/.config/ibus-sherpa-onnx/model'' is a directory or symlink to the ASR model.
- * Toggle: Ctrl+Shift+Space or ''~/.config/ibus-sherpa-onnx/hotkey''.
+ * Model: ''~/.config/ibus-sherpa-onnx/model''. Prefs: ''settings.ini'' (KeyFile).
+ * Toggle default: Ctrl+Shift+Space.
  * ''--debug'' / ''-d'': stderr + ~/.cache/ibus-sherpa-onnx/ibus-sherpa-onnx.debug.log.
  */
 int main(string[] args)

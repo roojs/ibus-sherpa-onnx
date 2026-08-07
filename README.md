@@ -1,71 +1,75 @@
 # ibus-sherpa-onnx
 
-Vala proof-of-concept: local streaming speech-to-text via **sherpa-onnx** (Nemotron).
+Local streaming speech-to-text as an **IBus** input method, via **sherpa-onnx** (Nemotron).
 
-**Main path (in progress):** an **IBus** input-method engine so dictation goes into the focused app — see [`docs/plans/0.3-vala-ibus-sherpa-onnx.md`](docs/plans/0.3-vala-ibus-sherpa-onnx.md).
-
-**Also available:** CLI stdout demo (`src/cli/`), and a **sideline** GTK composer window (`src/gtk/`).
+Plan: [`docs/plans/0.3-vala-ibus-sherpa-onnx.md`](docs/plans/0.3-vala-ibus-sherpa-onnx.md).
 
 ## Demo
 
 <video src="https://github.com/user-attachments/assets/21f1c392-2352-4e1a-8833-860ccb753cc4" controls width="100%"></video>
 
-## What you need
+## Install
 
-1. **apt packages** (build this PoC + run it; includes sherpa’s runtime dep ONNX Runtime):
+Use **`dpkg -i`** for local `.deb` files (not `apt install …/path.deb`).
+
+1. [libsherpa-onnx](https://github.com/roojs/sherpa-onnx/releases) runtime:
+
+```bash
+sudo dpkg -i libsherpa-onnx-c-api1_*.deb
+```
+
+2. This engine (after build, the package is `../ibus-sherpa-onnx_*.deb`):
+
+```bash
+sudo dpkg -i ../ibus-sherpa-onnx_*.deb
+
+# User install (default): ~/.config/ibus-sherpa-onnx/model
+./scripts/fetch-nemotron-model.sh
+# Or system-wide: sudo ./scripts/fetch-nemotron-model.sh
+#   → /usr/share/ibus-sherpa-onnx/model
+
+ibus restart
+
+gsettings set org.gnome.desktop.input-sources sources \
+  "[('xkb', 'us'), ('ibus', 'sherpa-onnx')]"
+```
+
+Switch to **Sherpa ONNX** (Super+Space), focus a text field, toggle with **Ctrl+Shift+Space**.
+
+```bash
+sudo dpkg -r ibus-sherpa-onnx   # uninstall
+```
+
+Model weights are not in the `.deb` (~440 MB). Fetch chooses the tree by euid (user config vs `/usr/share/…`) and sets the `model` symlink — no path env vars. Prefs: `~/.config/ibus-sherpa-onnx/settings.ini` (hotkey, notifications, preedit-animation).
+
+## Build from source
+
+Build-deps from the archive still use apt; the resulting package is installed with dpkg as above.
 
 ```bash
 sudo apt-get install -y \
-  valac meson ninja-build pkg-config \
+  valac meson ninja-build pkg-config debhelper devscripts \
+  libibus-1.0-dev \
   libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
   gstreamer1.0-plugins-good gstreamer1.0-plugins-base \
   gstreamer1.0-pulseaudio gstreamer1.0-pipewire \
   libonnxruntime1.21 libonnxruntime-dev
-```
 
-2. **sherpa-onnx `.deb`s** from [roojs/sherpa-onnx releases](https://github.com/roojs/sherpa-onnx/releases) — install both:
-
-- `libsherpa-onnx-c-api1`
-- `libsherpa-onnx-c-api-dev`
-
-```bash
-sudo apt install ./libsherpa-onnx-c-api1_*.deb ./libsherpa-onnx-c-api-dev_*.deb
-```
-
-3. **ASR model weights** (~440 MB download / ~630 MB on disk) — via the script below. The `560ms` / `1120ms` names are chunk latency, not download size.
-
-## Build & run
-
-```bash
-./scripts/fetch-nemotron-model.sh   # default: 560 ms chunk
+sudo dpkg -i libsherpa-onnx-c-api1_*.deb libsherpa-onnx-c-api-dev_*.deb
 meson setup build && ninja -C build
-./build/ibus-engine-sherpa-onnx      # IBus engine (needs ~/.config/ibus-sherpa-onnx/model)
-./build/sherpa-onnx-mic              # sideline stdout CLI (src/cli/)
-./build/sherpa-onnx-gtk              # sideline GTK composer demo (src/gtk/)
+dpkg-buildpackage -us -uc -b   # → ../ibus-sherpa-onnx_*.deb
 ```
 
-Model for the IBus engine (directory or symlink):
+Sideline demos (not packaged): `./build/sherpa-onnx-mic`, `./build/sherpa-onnx-gtk`.
 
-```bash
-mkdir -p ~/.config/ibus-sherpa-onnx
-ln -sfn "$PWD/models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25" \
-  ~/.config/ibus-sherpa-onnx/model
-```
-
-Optional longer-context model (same size, higher latency, often more accurate):
-
-```bash
-./scripts/fetch-nemotron-model.sh 1120
-./build/sherpa-onnx-mic models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-1120ms-int8-2026-04-25
-```
-
-Debian packaging / GNOME input-source install is plan 0.3 Phase 3.
+GitHub Actions builds the `.deb` on `v*` tags (`.github/workflows/release.yml`). RPM later.
 
 ## Plans
 
-- Stage 1 (stdout): [`docs/plans/0.1-vala-sherpa-stdout-poc.md`](docs/plans/0.1-vala-sherpa-stdout-poc.md)
-- Stage 2 (GTK composer sideline): [`docs/plans/0.2-vala-gtk-composer.md`](docs/plans/0.2-vala-gtk-composer.md)
-- Stage 3 (IBus engine — main path): [`docs/plans/0.3-vala-ibus-sherpa-onnx.md`](docs/plans/0.3-vala-ibus-sherpa-onnx.md)
+- [`0.1-vala-sherpa-stdout-poc.md`](docs/plans/0.1-vala-sherpa-stdout-poc.md)
+- [`0.2-vala-gtk-composer.md`](docs/plans/0.2-vala-gtk-composer.md)
+- [`0.3-vala-ibus-sherpa-onnx.md`](docs/plans/0.3-vala-ibus-sherpa-onnx.md)
+- [`0.4-prefs-feedback-models.md`](docs/plans/0.4-prefs-feedback-models.md) — prefs, listening feedback, system model download
 
 ## Artificial Intelligence Usage
 

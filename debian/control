@@ -1,0 +1,38 @@
+Source: ibus-sherpa-onnx
+Section: utils
+Priority: optional
+Maintainer: Alan Knowles <alan@roojs.com>
+Build-Depends: debhelper-compat (= 13),
+               meson,
+               ninja-build,
+               pkg-config,
+               valac,
+               libglib2.0-dev,
+               libibus-1.0-dev,
+               libgstreamer1.0-dev,
+               libgstreamer-plugins-base1.0-dev,
+               libsherpa-onnx-c-api-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/roojs/gtk-speechtotext-poc
+Vcs-Browser: https://github.com/roojs/gtk-speechtotext-poc
+Vcs-Git: https://github.com/roojs/gtk-speechtotext-poc.git
+Rules-Requires-Root: no
+
+Package: ibus-sherpa-onnx
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         ibus,
+         libsherpa-onnx-c-api1,
+         gstreamer1.0-plugins-good,
+         gstreamer1.0-plugins-base,
+         gstreamer1.0-pipewire | gstreamer1.0-pulseaudio
+Description: IBus speech dictation engine using sherpa-onnx
+ Local streaming speech-to-text as an IBus input method, powered by
+ sherpa-onnx (Nemotron online transducer).
+ .
+ Install this package, point ~/.config/ibus-sherpa-onnx/model at a fetched
+ model directory (or symlink), run ibus restart, then add the IME with
+ gsettings (see README).
+ .
+ ASR model weights are not included; fetch them separately (see README).

@@ -7,6 +7,14 @@ dist/
 *.so
 *.o
 
+# debian/ helper trees from dpkg-buildpackage (source files stay tracked)
+/debian/.debhelper/
+/debian/debhelper-build-stamp
+/debian/files
+/debian/*.substvars
+/debian/ibus-sherpa-onnx/
+/debian/tmp/
+
 # Local-only symlinks into sibling OLLMchat checkout (absolute paths)
 docs/build-rules.md
 docs/coding-standards.md

@@ -79,17 +79,16 @@ namespace IBus.SherpaOnnx
 	/**
 	 * ''GLib.Application'' host for the Sherpa ONNX IBus engine.
 	 *
-	 * Model path is ''~/.config/ibus-sherpa-onnx/model'' — a directory, or a symlink
-	 * to one. Toggle hotkey: ''~/.config/ibus-sherpa-onnx/hotkey''. ''--debug'' enables
-	 * stderr logging (RooTerm / OLLMchat pattern).
+	 * Model: ''~/.config/ibus-sherpa-onnx/model'' (dir or symlink). Prefs in
+	 * ''~/.config/ibus-sherpa-onnx/settings.ini'' (KeyFile). ''--debug'' enables
+	 * stderr logging.
 	 *
 	 * == Usage Examples ==
 	 *
-	 * === Point config at a fetched model ===
+	 * === Fetch model then run unpackaged ===
 	 *
 	 * {{{
-	 *   mkdir -p ~/.config/ibus-sherpa-onnx
-	 *   ln -sfn "$PWD/models/sherpa-onnx-nemotron-…" ~/.config/ibus-sherpa-onnx/model
+	 *   ./scripts/fetch-nemotron-model.sh
 	 *   ./build/ibus-engine-sherpa-onnx --debug
 	 * }}}
 	 *
@@ -99,8 +98,12 @@ namespace IBus.SherpaOnnx
 	{
 		public static bool opt_debug = false;
 		public static bool opt_debug_critical = false;
+		/** True when spawned by ibus-daemon (''--ibus''); skip register_component. */
+		public static bool opt_ibus = false;
 
 		private const GLib.OptionEntry[] options = {
+			{ "ibus", 'i', 0, OptionArg.NONE, ref opt_ibus,
+				"Executed by ibus-daemon (packaged component path)", null },
 			{ "debug", 'd', 0, OptionArg.NONE, ref opt_debug, "Enable debug output", null },
 			{ "debug-critical", 0, 0, OptionArg.NONE, ref opt_debug_critical,
 				"Treat critical warnings as errors", null },
@@ -133,16 +136,28 @@ namespace IBus.SherpaOnnx
 		}
 
 		/**
-		 * Load model, register the IBus component, hold the loop.
+		 * Load model, attach to ibus-daemon, hold the loop.
+		 *
+		 * With ''--ibus'' (packaged path): factory + {@link IBus.Bus.request_name}.
+		 * Without: runtime {@link IBus.Bus.register_component} for unpackaged smoke tests.
 		 */
 		public override void activate()
 		{
-			var model_dir = GLib.Path.build_filename(
+			var user_model = GLib.Path.build_filename(
 				GLib.Environment.get_user_config_dir(), "ibus-sherpa-onnx", "model"
 			);
-			var model_file = GLib.File.new_for_path(model_dir);
-			if (model_file.query_file_type(GLib.FileQueryInfoFlags.NONE) != GLib.FileType.DIRECTORY) {
-				GLib.critical("%s must be a model directory or a symlink to one", model_dir);
+			var system_model = "/usr/share/ibus-sherpa-onnx/model";
+			var model_dir = user_model;
+			if (GLib.File.new_for_path(user_model).query_file_type(GLib.FileQueryInfoFlags.NONE)
+					!= GLib.FileType.DIRECTORY) {
+				model_dir = system_model;
+			}
+			if (GLib.File.new_for_path(model_dir).query_file_type(GLib.FileQueryInfoFlags.NONE)
+					!= GLib.FileType.DIRECTORY) {
+				GLib.critical(
+					"No model at %s or %s — run fetch-nemotron-model.sh (or sudo for system)",
+					user_model, system_model
+				);
 				GLib.Process.exit(1);
 			}
 
@@ -156,25 +171,13 @@ namespace IBus.SherpaOnnx
 				GLib.Process.exit(1);
 			}
 
-			var hotkey = "Ctrl+Shift+Space";
-			var hotkey_path = GLib.Path.build_filename(
-				GLib.Environment.get_user_config_dir(), "ibus-sherpa-onnx", "hotkey"
-			);
-			try {
-				string contents;
-				GLib.FileUtils.get_contents(hotkey_path, out contents);
-				if (contents.strip() != "") {
-					hotkey = contents.strip();
-				}
-			} catch (GLib.Error err) {
-				GLib.debug("No hotkey file at %s; using default", hotkey_path);
-			}
+			this.load_settings();
 
 			var keyval = (uint) 0;
 			var accel_mods = (IBus.ModifierType) 0;
-			IBus.accelerator_parse(hotkey, out keyval, out accel_mods);
+			IBus.accelerator_parse(Engine.hotkey, out keyval, out accel_mods);
 			if (keyval == 0) {
-				var normalized = hotkey.replace("Ctrl+", "Control+").replace("ctrl+", "Control+");
+				var normalized = Engine.hotkey.replace("Ctrl+", "Control+").replace("ctrl+", "Control+");
 				var plus = normalized.last_index_of_char('+');
 				if (plus >= 0) {
 					normalized = normalized.substring(0, plus + 1) + normalized.substring(plus + 1).down();
@@ -188,7 +191,7 @@ namespace IBus.SherpaOnnx
 			}
 			if (keyval == 0) {
 				IBus.accelerator_parse("<Control><Shift>space", out keyval, out accel_mods);
-				GLib.warning("Could not parse hotkey '%s'; using Control+Shift+space", hotkey);
+				GLib.warning("Could not parse hotkey '%s'; using Control+Shift+space", Engine.hotkey);
 			}
 			Engine.toggle_keyval = keyval;
 			Engine.toggle_mods = (uint) accel_mods;
@@ -198,26 +201,85 @@ namespace IBus.SherpaOnnx
 				GLib.critical("Cannot connect to ibus-daemon");
 				GLib.Process.exit(1);
 			}
+			bus.disconnected.connect(() => {
+				this.release();
+			});
 
 			var factory = new IBus.Factory(bus.get_connection());
 			factory.add_engine("sherpa-onnx", typeof(Engine));
 
+			if (opt_ibus) {
+				bus.request_name("org.roojs.IBus.SherpaOnnx", 0);
+				GLib.debug("ibus mode: requested org.roojs.IBus.SherpaOnnx. Toggle=%s", Engine.hotkey);
+				this.hold();
+				return;
+			}
+
 			var component = new IBus.Component(
 				"org.roojs.IBus.SherpaOnnx", "Sherpa ONNX", "0.1.0", "LGPL",
-				"Alan Knowles <alan@roojs.com>", "https://github.com/roojs/ibus-sherpa-onnx",
+				"Alan Knowles <alan@roojs.com>",
+				"https://github.com/roojs/gtk-speechtotext-poc",
 				"", "ibus-sherpa-onnx"
 			);
-			component.add_engine(new IBus.EngineDesc(
-				"sherpa-onnx", "Sherpa ONNX", "Local speech-to-text dictation (PoC)",
-				"en", "LGPL", "Alan Knowles <alan@roojs.com>", "", "us"
+			component.add_engine((IBus.EngineDesc) GLib.Object.new(
+				typeof(IBus.EngineDesc),
+				"name", "sherpa-onnx",
+				"longname", "Sherpa ONNX",
+				"description", "Local speech-to-text dictation",
+				"language", "en",
+				"license", "LGPL",
+				"author", "Alan Knowles <alan@roojs.com>",
+				"icon", "",
+				"layout", "us",
+				"symbol", "voi"
 			));
 			if (!bus.register_component(component)) {
 				GLib.critical("Failed to register IBus component");
 				GLib.Process.exit(1);
 			}
-
-			GLib.debug("Registered sherpa-onnx. Toggle=%s", hotkey);
+			GLib.debug("Registered sherpa-onnx (unpackaged). Toggle=%s", Engine.hotkey);
 			this.hold();
+		}
+
+		/** Read ''settings.ini'' into {@link Engine} statics. */
+		private void load_settings()
+		{
+			Engine.hotkey = "Ctrl+Shift+Space";
+			Engine.notifications_enabled = false;
+			Engine.preedit_animation = true;
+			var path = GLib.Path.build_filename(
+				GLib.Environment.get_user_config_dir(), "ibus-sherpa-onnx", "settings.ini"
+			);
+			if (!GLib.FileUtils.test(path, GLib.FileTest.IS_REGULAR)) {
+				return;
+			}
+
+			var kf = new GLib.KeyFile();
+			try {
+				kf.load_from_file(path, GLib.KeyFileFlags.NONE);
+			} catch (GLib.Error err) {
+				GLib.debug("settings.ini: %s", err.message);
+				return;
+			}
+
+			if (!kf.has_group("general")) {
+				return;
+			}
+
+			if (kf.has_key("general", "hotkey")) {
+				var v = kf.get_string("general", "hotkey").strip();
+				if (v != "") {
+					Engine.hotkey = v;
+				}
+			}
+			if (kf.has_key("general", "notifications")) {
+				var s = kf.get_string("general", "notifications").strip().down();
+				Engine.notifications_enabled = (s == "true" || s == "1");
+			}
+			if (kf.has_key("general", "preedit-animation")) {
+				var s = kf.get_string("general", "preedit-animation").strip().down();
+				Engine.preedit_animation = (s == "true" || s == "1");
+			}
 		}
 	}
 }

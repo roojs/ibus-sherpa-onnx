@@ -1,0 +1,138 @@
+name: Release build
+
+# Debian package now; RPM job to follow (same pattern as RooTerm / sherpa-onnx).
+# Tags like `v0.1.0` publish artifacts to the GitHub Release.
+# Also runnable via workflow_dispatch (artifact upload only when untagged).
+
+run-name: Release build · ${{ github.ref_name }}
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-debian:
+    name: Build Debian package
+    runs-on: ubuntu-24.04
+    # Noble lacks libonnxruntime; Plucky matches sherpa-onnx runtime deps.
+    container:
+      image: ubuntu:25.04
+
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      DEB_BUILD_OPTIONS: parallel=2
+      DEBFULLNAME: GitHub Actions
+      DEBEMAIL: actions@users.noreply.github.com
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install git and ca-certificates
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git curl
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential debhelper devscripts fakeroot \
+            meson ninja-build pkg-config valac \
+            libglib2.0-dev libibus-1.0-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            libonnxruntime-dev \
+            gh
+
+      - name: Install libsherpa-onnx from roojs/sherpa-onnx release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sherpa-debs
+          gh release download -R roojs/sherpa-onnx \
+            -p 'libsherpa-onnx-c-api1_*_amd64.deb' \
+            -p 'libsherpa-onnx-c-api-dev_*_amd64.deb' \
+            -D /tmp/sherpa-debs
+          apt-get install -y /tmp/sherpa-debs/libsherpa-onnx-c-api1_*.deb \
+            /tmp/sherpa-debs/libsherpa-onnx-c-api-dev_*.deb
+
+      - name: Sync changelog version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          ver="${GITHUB_REF_NAME#v}"
+          if head -1 debian/changelog | grep -q "^ibus-sherpa-onnx ("; then
+            sed -i "1s/^ibus-sherpa-onnx ([^)]*)/ibus-sherpa-onnx (${ver}-1)/" debian/changelog
+          fi
+          head -1 debian/changelog
+
+      - name: Build .deb
+        run: |
+          set -euo pipefail
+          dpkg-buildpackage -us -uc -b
+          mkdir -p artifacts
+          cp ../ibus-sherpa-onnx_*.deb artifacts/
+          ls -lh artifacts
+          dpkg-deb --contents artifacts/ibus-sherpa-onnx_*.deb
+
+      - name: Upload Debian artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ibus-sherpa-onnx-deb
+          path: artifacts/*
+
+  # TODO: build-rpm (Fedora), same artifact/publish pattern as RooTerm.
+
+  publish:
+    name: Publish release assets
+    needs: [build-debian]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ls -lh artifacts
+          ver="${GITHUB_REF_NAME#v}"
+          if head -1 debian/changelog | grep -q "^ibus-sherpa-onnx ("; then
+            sed -i "1s/^ibus-sherpa-onnx ([^)]*)/ibus-sherpa-onnx (${ver}-1)/" debian/changelog
+          fi
+          notes="$(sed -n '/^  \*/,/^ -- /p' debian/changelog | sed '$d')"
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "$notes" \
+          || {
+            gh release upload "$GITHUB_REF_NAME" artifacts/* \
+              --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --notes "$notes"
+          }

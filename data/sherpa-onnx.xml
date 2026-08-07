@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- filename: sherpa-onnx.xml -->
+<component>
+	<name>org.roojs.IBus.SherpaOnnx</name>
+	<description>Sherpa ONNX speech dictation</description>
+	<exec>/usr/libexec/ibus-engine-sherpa-onnx --ibus</exec>
+	<version>0.1.0</version>
+	<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+	<license>LGPL</license>
+	<homepage>https://github.com/roojs/gtk-speechtotext-poc</homepage>
+	<textdomain>ibus-sherpa-onnx</textdomain>
+
+	<engines>
+		<engine>
+			<name>sherpa-onnx</name>
+			<language>en</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>us</layout>
+			<longname>Sherpa ONNX</longname>
+			<description>Local speech-to-text dictation</description>
+			<!-- Panel badge: not "en" (language alone). Idle vs listening updated at runtime. -->
+			<symbol>voi</symbol>
+			<rank>0</rank>
+		</engine>
+	</engines>
+</component>

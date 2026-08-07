@@ -46,10 +46,22 @@ executable(
   vala_args: [
     '--pkg=posix',
   ],
-  install: false,
+  install: true,
+  install_dir: get_option('libexecdir'),
 )
 
-# Sideline: CLI stdout mic smoke test.
+install_data(
+  'data/sherpa-onnx.xml',
+  install_dir: get_option('datadir') / 'ibus' / 'component',
+)
+
+install_data(
+  'scripts/fetch-nemotron-model.sh',
+  install_dir: get_option('datadir') / 'ibus-sherpa-onnx',
+  install_mode: 'rwxr-xr-x',
+)
+
+# Sideline: CLI stdout mic smoke test (not in the .deb).
 executable(
   'sherpa-onnx-mic',
   [
@@ -71,31 +83,33 @@ executable(
   install: false,
 )
 
-gtk_dep = dependency('gtk4')
-adw_dep = dependency('libadwaita-1')
+gtk_dep = dependency('gtk4', required: false)
+adw_dep = dependency('libadwaita-1', required: false)
 
-# Sideline: GTK composer demo.
-executable(
-  'sherpa-onnx-gtk',
-  [
-    'src/gtk/gtk_main.vala',
-    'src/gtk/ComposerInput.vala',
-    'src/gtk/ScrolledView.vala',
-    'src/transcriber.vala',
-  ],
-  dependencies: [
-    glib_dep,
-    gobject_dep,
-    gio_unix_dep,
-    gst_dep,
-    gst_app_dep,
-    sherpa_dep,
-    gtk_dep,
-    adw_dep,
-    m_dep,
-  ],
-  vala_args: [
-    '--pkg=posix',
-  ],
-  install: false,
-)
+# Sideline: GTK composer demo (optional; not in the .deb).
+if gtk_dep.found() and adw_dep.found()
+  executable(
+    'sherpa-onnx-gtk',
+    [
+      'src/gtk/gtk_main.vala',
+      'src/gtk/ComposerInput.vala',
+      'src/gtk/ScrolledView.vala',
+      'src/transcriber.vala',
+    ],
+    dependencies: [
+      glib_dep,
+      gobject_dep,
+      gio_unix_dep,
+      gst_dep,
+      gst_app_dep,
+      sherpa_dep,
+      gtk_dep,
+      adw_dep,
+      m_dep,
+    ],
+    vala_args: [
+      '--pkg=posix',
+    ],
+    install: false,
+  )
+endif
