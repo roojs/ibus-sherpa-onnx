@@ -1,6 +1,7 @@
 # GNOME Settings ⋯ Preferences does nothing for language engines
 
-**Status:** ✔️ DONE  
+**Status:** ✅  
+
 
 **Reported from:** Keyboard → Input Sources → ⋯ on secondary Sherpa engines  
 **Package:** `ibus-sherpa-onnx` 0.2.0

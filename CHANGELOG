@@ -7,6 +7,15 @@
   `models.ini`).
 - Preferences: searchable Language combo (ICU labels); Select model radios
   filtered by language family; writes `general/language=`.
+- Per-language model choice in `packs.ini` (`[packs] es-ES=nemo-ml-1120`);
+  engine loads that pack (not the legacy `model` symlink). Seed from symlink
+  once; saving an `en-*` pack also sets bare `en` for `sherpa-onnx`.
+- Recreate the recognizer when the engine/pack changes; always show a loading
+  notification (start/stop listening notifications stay optional).
+- GNOME Settings ⋯ Preferences for language engines: write
+  `~/.local/share/applications/ibus-setup-<engine>.desktop` on prefs install.
+- Desktop file for `org.roojs.ibus-sherpa-onnx` so GNOME allows engine
+  notifications.
 - Runtime: apply sherpa-onnx stream `language` for non-English locales.
 - One IBus engine id per catalog language (for example sherpa-onnx,
   sherpa-onnx-ja) so GNOME Settings groups the IME under that language; prefs
@@ -16,8 +25,7 @@
   gstreamer plugins-bad.
 - Model download verifies SHA-256 via GitHub Releases API `digest` (no
   packaged `data/checksums/` sidecars).
-- ASR language from engine id (`sherpa-onnx-es-ES`) or prefs when bare
-  `sherpa-onnx`.
+- ASR language from engine id (`sherpa-onnx-es-ES`); bare `sherpa-onnx` is `en`.
 - Preferences window widened so language combo labels fit.
 
 ## 0.1.0 - 2026-08-07

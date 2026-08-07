@@ -1,6 +1,7 @@
 # libsherpa-onnx-c-api: undefined `knf::*` at link and runtime
 
-**Status:** ✔️ DONE  
+**Status:** ✅  
+
 
 **Reported from:** `ibus-sherpa-onnx` Vala stdout PoC  
 **Package:** `libsherpa-onnx-c-api1` / `-dev` `1.13.4-1`
