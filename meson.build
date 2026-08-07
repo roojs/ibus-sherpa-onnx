@@ -47,12 +47,13 @@ executable(
 gtk_dep = dependency('gtk4')
 adw_dep = dependency('libadwaita-1')
 
+# Sideline GTK composer demo (main product path is IBus — see docs/plans/0.3).
 executable(
   'stt-gtk-poc',
   [
-    'src/gtk_main.vala',
-    'src/ComposerInput.vala',
-    'src/ScrolledView.vala',
+    'src/gtk/gtk_main.vala',
+    'src/gtk/ComposerInput.vala',
+    'src/gtk/ScrolledView.vala',
     'src/stt_engine.vala',
   ],
   dependencies: [
@@ -64,6 +65,33 @@ executable(
     sherpa_dep,
     gtk_dep,
     adw_dep,
+    m_dep,
+  ],
+  vala_args: [
+    '--pkg=posix',
+  ],
+  install: false,
+)
+
+ibus_dep = dependency('ibus-1.0')
+
+# IBus Speech STT engine (toggle hotkey → SttEngine → preedit/commit).
+executable(
+  'stt-ibus-engine',
+  [
+    'src/ibus/ibus_main.vala',
+    'src/ibus/ibus_application.vala',
+    'src/ibus/stt_ibus_engine.vala',
+    'src/stt_engine.vala',
+  ],
+  dependencies: [
+    glib_dep,
+    gobject_dep,
+    gio_unix_dep,
+    gst_dep,
+    gst_app_dep,
+    sherpa_dep,
+    ibus_dep,
     m_dep,
   ],
   vala_args: [

@@ -1,6 +1,10 @@
 # gtk-speechtotext-poc
 
-Vala proof-of-concept: local streaming speech-to-text via **sherpa-onnx** (Nemotron). Speak into the mic; the transcript prints on **stdout** (partials on one line, a newline when an endpoint fires).
+Vala proof-of-concept: local streaming speech-to-text via **sherpa-onnx** (Nemotron).
+
+**Main path (in progress):** an **IBus** input-method engine so dictation goes into the focused app — see [`docs/plans/0.3-vala-ibus-stt-engine.md`](docs/plans/0.3-vala-ibus-stt-engine.md).
+
+**Also available:** CLI stdout demo, and a **sideline** GTK composer window (`src/gtk/`).
 
 ## Demo
 
@@ -36,7 +40,7 @@ sudo apt install ./libsherpa-onnx-c-api1_*.deb ./libsherpa-onnx-c-api-dev_*.deb
 ./scripts/fetch-nemotron-model.sh   # default: 560 ms chunk
 meson setup build && ninja -C build
 ./build/stt-poc          # stdout CLI
-./build/stt-gtk-poc      # GTK composer + mic (Ctrl+Shift+Space; Escape to stop)
+./build/stt-gtk-poc      # sideline GTK composer + mic (Ctrl+Shift+Space; Escape to stop)
 ```
 
 Optional longer-context model (same size, higher latency, often more accurate):
@@ -46,10 +50,13 @@ Optional longer-context model (same size, higher latency, often more accurate):
 ./build/stt-poc models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-1120ms-int8-2026-04-25
 ```
 
+IBus engine install/run steps land with plan 0.3 Phase 3 (needs `libibus-1.0-dev` first — see that plan).
+
 ## Plans
 
 - Stage 1 (stdout): [`docs/plans/0.1-vala-sherpa-stdout-poc.md`](docs/plans/0.1-vala-sherpa-stdout-poc.md)
-- Stage 2 (GTK composer + mic): [`docs/plans/0.2-vala-gtk-composer-stt.md`](docs/plans/0.2-vala-gtk-composer-stt.md)
+- Stage 2 (GTK composer sideline): [`docs/plans/0.2-vala-gtk-composer-stt.md`](docs/plans/0.2-vala-gtk-composer-stt.md)
+- Stage 3 (IBus engine — main path): [`docs/plans/0.3-vala-ibus-stt-engine.md`](docs/plans/0.3-vala-ibus-stt-engine.md)
 
 ## Artificial Intelligence Usage
 

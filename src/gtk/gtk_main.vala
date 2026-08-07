@@ -1,5 +1,5 @@
 /**
- * GTK composer + mic STT hello world.
+ * Sideline GTK composer + mic STT hello world (see docs/plans/0.3 for IBus).
  *
  * Usage:
  *   stt-gtk-poc [model-dir]
