@@ -19,56 +19,23 @@
 namespace IBus.SherpaOnnx
 {
 	/**
-	 * Nemotron model catalog, readiness, and cleanup.
+	 * Nemotron catalog ({@link packs} / {@link languages} KeyFiles) and cleanup.
 	 *
-	 * Shared by the IBus engine and ''ibus-setup-sherpa-onnx''. Construct once
-	 * and query — paths come from {@link user_config} / {@link system_prefix}
-	 * plus {@link names}.
-	 *
-	 * == Example ==
-	 *
-	 * {{{
-	 * var models = new Models();
-	 * var dir = models.resolve();
-	 * if (dir == "") {
-	 *     GLib.critical("no model");
-	 * }
-	 * }}}
+	 * Catalog data is embedded GResource KeyFiles — read fields with the usual
+	 * {@link GLib.KeyFile} getters. A tree is usable when it has a local
+	 * ''.sha256'' stamp (written after download verify).
 	 */
 	public class Models : GLib.Object
 	{
 		/**
-		 * Chunk sizes offered in prefs (ms), parallel to {@link names}.
+		 * Embedded ''resources/models.ini'' (pack groups).
 		 */
-		public int[] chunks = { 560, 1120 };
+		public GLib.KeyFile packs;
 
 		/**
-		 * Rough archive download sizes matching {@link chunks}.
+		 * Embedded ''resources/languages.ini'' (language groups).
 		 */
-		public string[] sizes = { "~430 MB", "~440 MB" };
-
-		/**
-		 * GitHub Content-Length for each {@link chunks} archive.
-		 */
-		public int64[] archive_bytes = { 463945051, 463945058 };
-
-		/**
-		 * Unpack dir / archive basename for each {@link chunks} entry.
-		 */
-		public string[] names = {
-			"sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25",
-			"sherpa-onnx-nemotron-speech-streaming-en-0.6b-1120ms-int8-2026-04-25"
-		};
-
-		/**
-		 * Files required in a usable model tree.
-		 */
-		public string[] needed = {
-			"encoder.int8.onnx",
-			"decoder.int8.onnx",
-			"joiner.int8.onnx",
-			"tokens.txt"
-		};
+		public GLib.KeyFile languages;
 
 		/**
 		 * ''~/.config/ibus-sherpa-onnx'' (user models + active symlink).
@@ -82,6 +49,7 @@ namespace IBus.SherpaOnnx
 
 		/**
 		 * Directory of packaged ''*.sha256'' digests (system or checkout).
+		 * Only used by prefs download verify until that switches to GitHub asset digest.
 		 */
 		public string checksums_dir;
 
@@ -92,150 +60,37 @@ namespace IBus.SherpaOnnx
 			var system = GLib.Path.build_filename(this.system_prefix, "checksums");
 			if (GLib.FileUtils.test(system, GLib.FileTest.IS_DIR)) {
 				this.checksums_dir = system;
-				return;
+			} else {
+				var local = GLib.Path.build_filename(GLib.Environment.get_current_dir(),
+					"data", "checksums");
+				this.checksums_dir = GLib.FileUtils.test(local, GLib.FileTest.IS_DIR) ? local : system;
 			}
-			var local = GLib.Path.build_filename(GLib.Environment.get_current_dir(),
-				"data", "checksums");
-			this.checksums_dir = GLib.FileUtils.test(local, GLib.FileTest.IS_DIR) ? local : system;
+			this.packs = new GLib.KeyFile();
+			this.languages = new GLib.KeyFile();
+			this.packs.load_from_bytes(
+				GLib.resources_lookup_data("/models.ini", GLib.ResourceLookupFlags.NONE),
+				GLib.KeyFileFlags.NONE);
+			this.languages.load_from_bytes(
+				GLib.resources_lookup_data("/languages.ini", GLib.ResourceLookupFlags.NONE),
+				GLib.KeyFileFlags.NONE);
 		}
 
 		/**
-		 * True when ''dir'' has required files and a ''.sha256'' stamp matching
-		 * the packaged digest. Pre-stamp installs with a full-sized encoder get
-		 * a stamp written once (truncated trees fail the size gate).
-		 *
-		 * @param dir model tree path (resolved symlink target, not the link)
-		 * @return true if the tree is safe to load
+		 * Remove an incomplete user unpack and truncated archive for ''pack_id''.
 		 */
-		public bool ready(string dir)
+		public void discard_partial(string pack_id)
 		{
-			foreach (var name in this.needed) {
-				if (!GLib.FileUtils.test(GLib.Path.build_filename(dir, name), GLib.FileTest.IS_REGULAR)) {
-					return false;
-				}
-			}
-			var tree = GLib.Path.get_basename(dir);
-			var expect_path = GLib.Path.build_filename(this.checksums_dir, tree + ".sha256");
-			if (!GLib.FileUtils.test(expect_path, GLib.FileTest.IS_REGULAR)) {
-				return false;
-			}
-			var expected = "";
-			try {
-				var contents = "";
-				GLib.FileUtils.get_contents(expect_path, out contents);
-				expected = contents.strip().split_set(" \t\n", 2)[0];
-			} catch (GLib.Error err) {
-				return false;
-			}
-			if (expected == "") {
-				return false;
-			}
-			var stamp = GLib.Path.build_filename(dir, ".sha256");
-			if (GLib.FileUtils.test(stamp, GLib.FileTest.IS_REGULAR)) {
-				try {
-					var stamp_hash = "";
-					GLib.FileUtils.get_contents(stamp, out stamp_hash);
-					return stamp_hash.strip() == expected;
-				} catch (GLib.Error err) {
-					return false;
-				}
-			}
-			try {
-				var info = GLib.File.new_for_path(GLib.Path.build_filename(dir, "encoder.int8.onnx")).query_info(
-					GLib.FileAttribute.STANDARD_SIZE, GLib.FileQueryInfoFlags.NONE);
-				int64 min_bytes = tree.contains("-1120ms-") ? 1000L * 1024 * 1024 : 500L * 1024 * 1024;
-				if (info.get_size() < min_bytes) {
-					return false;
-				}
-			} catch (GLib.Error err) {
-				return false;
-			}
-			try {
-				GLib.FileUtils.set_contents(stamp, expected + "\n");
-			} catch (GLib.Error err) {
-				return false;
-			}
-			return true;
-		}
-
-		/**
-		 * Active ready model: user ''model'' symlink, else auto-link the largest
-		 * ready tree under system ''models/'' (user ''models/'' is download staging only).
-		 *
-		 * @return absolute model tree path, or "" if none is ready
-		 */
-		public string resolve()
-		{
-			var link = GLib.Path.build_filename(this.user_config, "model");
-			if (GLib.File.new_for_path(link).query_file_type(GLib.FileQueryInfoFlags.NONE)
-					== GLib.FileType.DIRECTORY) {
-				var path = link;
-				try {
-					if (GLib.FileUtils.test(link, GLib.FileTest.IS_SYMLINK)) {
-						path = GLib.FileUtils.read_link(link);
-					}
-				} catch (GLib.FileError err) {
-				}
-				if (this.ready(path)) {
-					return path;
-				}
-			}
-
-			var best = "";
-			var best_bytes = (int64) 0;
-			for (var i = 0; i < this.names.length; i++) {
-				var candidate = GLib.Path.build_filename(this.system_prefix, "models", this.names[i]);
-				if (!this.ready(candidate) || this.archive_bytes[i] <= best_bytes) {
-					continue;
-				}
-				best_bytes = this.archive_bytes[i];
-				best = candidate;
-			}
-			if (best == "") {
-				return "";
-			}
-			GLib.DirUtils.create_with_parents(this.user_config, 0755);
-			var link_file = GLib.File.new_for_path(link);
-			try {
-				if (link_file.query_exists()) {
-					link_file.delete();
-				}
-				link_file.make_symbolic_link(best);
-			} catch (GLib.Error err) {
-				GLib.warning("auto-link model: %s", err.message);
-				return best;
-			}
-			GLib.debug("Auto-linked %s -> %s", link, best);
-			return best;
-		}
-
-		/**
-		 * Remove an incomplete user unpack and truncated archive for ''chunk''.
-		 *
-		 * @param chunk chunk size in ms (0 is a no-op)
-		 */
-		public void discard_partial(int chunk)
-		{
-			if (chunk == 0) {
+			if (pack_id == "") {
 				return;
 			}
-			var name = "";
-			int64 expect = 0;
-			for (var i = 0; i < this.chunks.length; i++) {
-				if (this.chunks[i] != chunk) {
-					continue;
-				}
-				name = this.names[i];
-				expect = this.archive_bytes[i];
-				break;
-			}
-			if (name == "") {
-				return;
-			}
+			var name = this.packs.get_string(pack_id, "name");
+			var expect = this.packs.get_int64(pack_id, "archive_bytes");
 			var cache = GLib.Path.build_filename(GLib.Environment.get_user_cache_dir(),
 				"ibus-sherpa-onnx", "download");
 			var staged = GLib.Path.build_filename(cache, name);
-			if (GLib.FileUtils.test(staged, GLib.FileTest.IS_DIR) && !this.ready(staged)) {
+			if (GLib.FileUtils.test(staged, GLib.FileTest.IS_DIR)
+					&& !GLib.FileUtils.test(GLib.Path.build_filename(staged, ".sha256"),
+						GLib.FileTest.IS_REGULAR)) {
 				try {
 					string[] argv = { "rm", "-rf", staged };
 					GLib.Process.spawn_sync(null, argv, null, GLib.SpawnFlags.SEARCH_PATH,
@@ -260,6 +115,49 @@ namespace IBus.SherpaOnnx
 			}
 			if (size < expect * 9 / 10) {
 				GLib.FileUtils.remove(archive);
+			}
+		}
+
+		/**
+		 * Add one {@link IBus.EngineDesc} per catalog language to ''component''.
+		 *
+		 * @param component IBus component (unpackaged registration)
+		 */
+		public void register_engines(IBus.Component component)
+		{
+			foreach (var code in this.languages.get_groups()) {
+				var engine_id = code == "en" ? "sherpa-onnx" : "sherpa-onnx-" + code;
+				var longname = code == "en" ? "Sherpa ONNX" : "Sherpa ONNX (" + code + ")";
+				var layout = "us";
+				var parts = code.split("-", 2);
+				if (parts.length >= 2) {
+					layout = parts[1].down();
+					if (parts[1] == "AR") {
+						layout = "ara";
+					}
+					if (parts[1] == "IN") {
+						layout = "in";
+					}
+				}
+				/* ''ro-RO'' → ''ro-v''; ''en-US'' → ''en-us-v''. */
+				var tag = code.down().split("-", 2);
+				var symbol = tag[0] + "-v";
+				if (tag.length >= 2 && tag[0] != tag[1]) {
+					symbol = tag[0] + "-" + tag[1] + "-v";
+				}
+				component.add_engine((IBus.EngineDesc) GLib.Object.new(
+					typeof(IBus.EngineDesc),
+					"name", engine_id,
+					"longname", longname,
+					"description", "Local speech-to-text dictation",
+					"language", code.split("-")[0],
+					"license", "LGPL",
+					"author", "Alan Knowles <alan@roojs.com>",
+					"icon", "",
+					"layout", layout,
+					"symbol", symbol,
+					"setup", "/usr/bin/ibus-setup-sherpa-onnx"
+				));
 			}
 		}
 	}

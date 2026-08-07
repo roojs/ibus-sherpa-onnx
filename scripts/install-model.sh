@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Polkit helper: move a staged Nemotron tree into the system models store.
-# No network. Does not touch ~/.config/…/model.
+# No network. Does not touch ~/.config/.../model.
 #
 # Usage (via pkexec):
 #   pkexec /usr/libexec/ibus-sherpa-onnx-install-model <dir-name>
@@ -9,7 +9,9 @@ set -euo pipefail
 NAME="${1:-}"
 case "$NAME" in
   sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25|\
-  sherpa-onnx-nemotron-speech-streaming-en-0.6b-1120ms-int8-2026-04-25) ;;
+  sherpa-onnx-nemotron-speech-streaming-en-0.6b-1120ms-int8-2026-04-25|\
+  sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11|\
+  sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-1120ms-int8-2026-06-11) ;;
   *)
     echo "Usage: $0 <nemotron-dir-name>" >&2
     exit 2

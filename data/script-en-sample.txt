@@ -1,0 +1,30 @@
+# Speak the non-# lines.
+# These are where capture basically lost the plot (wrong or missing chunks),
+# not near word-perfect lines.
+
+# was: K A fee you can do that A three You can do that ..
+Okay, A2 you can do that. A3 you can do that.
+
+# was: Um uh gre code here streamy family equal join I don't know yeah your questions eml checksum files I don't know what you're talking about
+Um, uh, gresource code here, stream, family, equal, join. I don't know. Yeah, your questions — eml checksum files. I don't know what you're talking about.
+
+# was: Of course I want to the fuck .
+Of course I want 0.2.0, for fuck's sake.
+
+# was: Um, is there any way to notify My bossRem is there any way to notify The the desktop when we uninstall because I uninstalled the package but everything's still working which seems a bit weird
+Um, is there any way to notify ibus-daemon? Is there any way to notify the desktop when we uninstall, because I uninstalled the package but everything's still working which seems a bit weird.
+
+# was: I think we decided on zero, aren't we Let's see about eighty one now. I don't think the small helper we can just set and load correctly into the um key fold whatever foos and everything and just use the key fold data ..
+I think we decided on A0, aren't we. Let's see about A1 now. I don't think the small helper — we can just set and load correctly into the, um, keyfile whatever fields and everything and just use the keyfile data.
+
+# was: So find property bind property as a method where you can create a class to compare some values. I don't want you to modify the config that's fixing gold. You shouldn't be changing stuff
+So find property, bind property as a method where you can create a class to compare some values. I don't want you to modify the config; that's the fixed goal. You shouldn't be changing stuff.
+
+# was: Where's a place to announce this uh the Gano mailing bans AI GNOME mail it bans AI we can't post there must be other places where I haven't I guess my block might be syndicated in for years
+Where's a place to announce this? Uh, the GNOME mailing bans AI. GNOME mail, it bans AI. We can't post there. Must be other places where I haven't. I guess my blog might be syndicated in for years.
+
+# was: You say you need a SherpA, Onyx, whatever, up to date. Well, we've got the most up to date, haven't we? So I don't know why you're saying that. What you what I don't know is whether or not we can be we've exposed the API to do this. On our minimal package. Or I guess we just have to improve our VAP, do we?
+You say you need a sherpa-onnx, whatever, up to date. Well, we've got the most up to date, haven't we? So I don't know why you're saying that. What I don't know is whether or not we've exposed the API to do this on our minimal package. Or I guess we just have to improve our VAPI, do we?
+
+# was: Would not Install the setup into user libexec Or a Libexac, and then just have a small wrapper in Been that fired it up with the launch
+Would not install the setup into user libexec or a libexec, and then just have a small wrapper in bin that fired it up with gtk-launch.

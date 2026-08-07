@@ -25,7 +25,7 @@ namespace IBus.SherpaOnnx.Setup
 	 * == Example ==
 	 *
 	 * {{{
-	 * var notify = new RowSwitch(config, "notifications", "Desktop notifications", "…");
+	 * var notify = new RowSwitch(config, "notifications", "Desktop notifications", "...");
 	 * group.add(notify.row);
 	 * notify.fill();
 	 * }}}

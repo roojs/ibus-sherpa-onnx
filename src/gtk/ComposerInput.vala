@@ -85,7 +85,7 @@ namespace IBus.SherpaOnnx
 			this.text_view.add_css_class("chat-input-text");
 			this.scrolled.set_child(this.text_view);
 
-			this.placeholder = new Gtk.Label("Speak or type…") {
+			this.placeholder = new Gtk.Label("Speak or type...") {
 				halign = Gtk.Align.START,
 				valign = Gtk.Align.CENTER,
 				margin_start = 6,

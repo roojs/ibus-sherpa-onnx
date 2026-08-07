@@ -51,7 +51,7 @@ sudo apt-get install -y \
 
 (`pipewire` **or** `pulseaudio` plugin is enough at package install time.)
 
-Preferences installs models into `/usr/share/…` via polkit (`pkexec` / `polkitd`) — already in the package `Depends`.
+Preferences installs models into `/usr/share/...` via polkit (`pkexec` / `polkitd`) — already in the package `Depends`.
 
 ### sherpa-onnx (not in the Ubuntu archive)
 
@@ -73,7 +73,7 @@ ninja -C build
 Default build is the IBus engine + Preferences only. Optional sideline demos:
 
 ```bash
-meson setup build -Dcli=true -Dgtk_demo=true   # or meson configure build -Dcli=true …
+meson setup build -Dcli=true -Dgtk_demo=true   # or meson configure build -Dcli=true ...
 ninja -C build
 ```
 
@@ -107,7 +107,7 @@ Packaging lives in `debian/` (`debhelper` + Meson via `debian/rules`). Source pa
 dpkg-buildpackage -us -uc -b
 ```
 
-Produces `../ibus-sherpa-onnx_*.deb` (and related `.buildinfo` / `.changes`). Install with **`dpkg -i`**, not `apt install …/path.deb`:
+Produces `../ibus-sherpa-onnx_*.deb` (and related `.buildinfo` / `.changes`). Install with **`dpkg -i`**, not `apt install .../path.deb`:
 
 ```bash
 sudo dpkg -i ../ibus-sherpa-onnx_*.deb

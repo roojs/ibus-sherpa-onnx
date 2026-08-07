@@ -32,7 +32,7 @@ namespace IBus.SherpaOnnx
 	 *
 	 * {{{
 	 *   Gst.init(ref args);
-	 *   var transcriber = new IBus.SherpaOnnx.Transcriber(model_dir);
+	 *   var transcriber = new IBus.SherpaOnnx.Transcriber(model_dir, "ja-JP");
 	 *   transcriber.partial.connect((t) => { stdout.printf("\r%s", t); stdout.flush(); });
 	 *   transcriber.endpoint.connect((t) => { stdout.printf("\n"); stdout.flush(); });
 	 *   transcriber.start();
@@ -50,6 +50,8 @@ namespace IBus.SherpaOnnx
 		private int partial_updates = 0;
 		private int64 segment_start_us = 0;
 		private GLib.Mutex emit_lock;
+		/** Stream ''language'' option; empty skips ''set_option'' (English-only packs). */
+		private string stream_language = "";
 
 		/** True while the capture pipeline is PLAYING. */
 		public bool listening { get; private set; default = false; }
@@ -87,12 +89,16 @@ namespace IBus.SherpaOnnx
 		 * Load Nemotron online recognizer from ''model_dir'' (encoder/decoder/joiner/tokens).
 		 *
 		 * @param model_dir directory with int8 ONNX + tokens.txt
+		 * @param language prefs ''general/language='' (catalog code); English codes skip stream option
 		 * @throws GLib.IOError if recognizer, stream, or pipeline cannot be created
 		 */
-		public Transcriber(string model_dir) throws GLib.Error
+		public Transcriber(string model_dir, string language = "") throws GLib.Error
 		{
 			this.emit_lock = GLib.Mutex();
 			this.segment_start_us = GLib.get_monotonic_time();
+			if (language != "" && language != "en" && !language.has_prefix("en-")) {
+				this.stream_language = language;
+			}
 
 			var saved_stderr = Posix.dup(Posix.STDERR_FILENO);
 			var devnull = Posix.open("/dev/null", Posix.O_WRONLY);
@@ -136,9 +142,16 @@ namespace IBus.SherpaOnnx
 			if (this.stream == null) {
 				throw new GLib.IOError.FAILED("Failed to create online stream");
 			}
+			if (this.stream_language != "") {
+				this.stream.set_option("language", this.stream_language);
+			}
 
+			/* webrtcdsp AGC (gain-control); echo-cancel off — no playback probe. */
 			this.pipeline = (Gst.Pipeline) Gst.parse_launch(
 				"autoaudiosrc ! audioconvert ! audioresample ! "
+				+ "audio/x-raw,format=S16LE,layout=interleaved,channels=1,rate=16000 ! "
+				+ "webrtcdsp gain-control=true echo-cancel=false ! "
+				+ "audioconvert ! audioresample ! "
 				+ "audio/x-raw,format=F32LE,channels=1,rate=16000 ! "
 				+ "appsink name=sink emit-signals=true max-buffers=10 drop=true sync=false"
 			);
@@ -211,6 +224,9 @@ namespace IBus.SherpaOnnx
 			}
 			if (this.last_text == "") {
 				this.recognizer.reset(this.stream);
+				if (this.stream_language != "") {
+					this.stream.set_option("language", this.stream_language);
+				}
 				return Gst.FlowReturn.OK;
 			}
 
@@ -227,6 +243,9 @@ namespace IBus.SherpaOnnx
 			this.partial_updates = 0;
 			this.segment_start_us = GLib.get_monotonic_time();
 			this.recognizer.reset(this.stream);
+			if (this.stream_language != "") {
+				this.stream.set_option("language", this.stream_language);
+			}
 
 			GLib.Idle.add(() => {
 				this.last_token_count = tokens;
@@ -261,6 +280,9 @@ namespace IBus.SherpaOnnx
 			this.listening = false;
 			this.pipeline.set_state(Gst.State.NULL);
 			this.recognizer.reset(this.stream);
+			if (this.stream_language != "") {
+				this.stream.set_option("language", this.stream_language);
+			}
 			this.last_text = "";
 			this.partial_updates = 0;
 			this.emit_lock.lock();

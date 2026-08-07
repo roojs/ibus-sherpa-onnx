@@ -27,7 +27,7 @@ namespace IBus.SherpaOnnx.Setup
 	 * == Example ==
 	 *
 	 * {{{
-	 * var hotkey = new RowKeySelect(config, "hotkey", "Toggle hotkey", "…");
+	 * var hotkey = new RowKeySelect(config, "hotkey", "Toggle hotkey", "...");
 	 * group.add(hotkey.row);
 	 * hotkey.fill();
 	 * }}}

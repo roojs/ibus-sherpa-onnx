@@ -39,8 +39,10 @@ namespace IBus.SherpaOnnx.Setup
 		private Soup.Session soup = new Soup.Session();
 		private GLib.Cancellable cancellable = new GLib.Cancellable();
 		private bool was_cancelled = false;
+		private string pending_pack_id = "";
 		private int pending_chunk = 0;
 		private string pending_name = "";
+		private string pending_url = "";
 		private string pending_system = "";
 		private string archive_path = "";
 		private int64 expect_bytes = 0;
@@ -57,17 +59,28 @@ namespace IBus.SherpaOnnx.Setup
 
 		public ModelDownload(Models models)
 		{
-			Object(orientation: Gtk.Orientation.VERTICAL, spacing: 12,
-				valign: Gtk.Align.START, vexpand: false,
-				margin_start: 24, margin_end: 24, margin_top: 24, margin_bottom: 24);
+			GLib.Object(
+				orientation: Gtk.Orientation.VERTICAL,
+				spacing: 12,
+				valign: Gtk.Align.START,
+				vexpand: false,
+				margin_start: 24,
+				margin_end: 24,
+				margin_top: 24,
+				margin_bottom: 24
+			);
 			this.models = models;
 			this.soup.timeout = 0;
 			this.status_label = new Gtk.Label("") {
-				xalign = 0, wrap = false, hexpand = true,
-				ellipsize = Pango.EllipsizeMode.END, single_line_mode = true
+				xalign = 0,
+				wrap = false,
+				hexpand = true,
+				ellipsize = Pango.EllipsizeMode.END,
+				single_line_mode = true
 			};
 			this.status_bar = new Gtk.ProgressBar() {
-				hexpand = true, show_text = true
+				hexpand = true,
+				show_text = true
 			};
 			this.cancel_btn = new Gtk.Button.with_label("Cancel") {
 				halign = Gtk.Align.END
@@ -81,7 +94,7 @@ namespace IBus.SherpaOnnx.Setup
 				}
 				this.was_cancelled = true;
 				this.cancel_btn.sensitive = false;
-				this.status_label.label = "Cancelling…";
+				this.status_label.label = "Cancelling...";
 				this.status_bar.pulse();
 				this.status_bar.text = "";
 				this.cancellable.cancel();
@@ -96,35 +109,32 @@ namespace IBus.SherpaOnnx.Setup
 		 *
 		 * @return true if async work started (caller should show this widget)
 		 */
-		public bool apply(int chunk)
+		public bool apply(string pack_id)
 		{
 			if (this.busy) {
 				return true;
 			}
-			if (chunk == 0) {
+			if (pack_id == "") {
 				return false;
 			}
 
-			var name = "";
-			int64 expect = 0;
-			for (var i = 0; i < this.models.chunks.length; i++) {
-				if (this.models.chunks[i] != chunk) {
-					continue;
-				}
-				name = this.models.names[i];
-				expect = this.models.archive_bytes[i];
-				break;
-			}
+			var name = this.models.packs.get_string(pack_id, "name");
+			var url = this.models.packs.get_string(pack_id, "url");
+			var chunk = this.models.packs.get_integer(pack_id, "chunk");
+			var expect = this.models.packs.get_int64(pack_id, "archive_bytes");
 			var system_path = GLib.Path.build_filename(this.models.system_prefix, "models", name);
-			if (this.models.ready(system_path)) {
+			if (GLib.FileUtils.test(GLib.Path.build_filename(system_path, ".sha256"),
+					GLib.FileTest.IS_REGULAR)) {
 				this.link(system_path);
 				return false;
 			}
 
 			this.busy = true;
 			this.was_cancelled = false;
+			this.pending_pack_id = pack_id;
 			this.pending_chunk = chunk;
 			this.pending_name = name;
+			this.pending_url = url;
 			this.pending_system = system_path;
 			this.expect_bytes = expect;
 			var cache = GLib.Path.build_filename(GLib.Environment.get_user_cache_dir(),
@@ -132,15 +142,16 @@ namespace IBus.SherpaOnnx.Setup
 			GLib.DirUtils.create_with_parents(cache, 0755);
 			this.archive_path = GLib.Path.build_filename(cache, name + ".tar.bz2");
 			var staged = GLib.Path.build_filename(cache, name);
-			if (this.models.ready(staged)) {
-				this.status_label.label = "Installing system model…";
+			if (GLib.FileUtils.test(GLib.Path.build_filename(staged, ".sha256"),
+					GLib.FileTest.IS_REGULAR)) {
+				this.status_label.label = "Installing system model...";
 				this.status_bar.fraction = 1.0;
 				this.status_bar.text = "";
 				this.install_system();
 				return true;
 			}
 			this.cancel_btn.sensitive = true;
-			this.status_label.label = "Downloading Nemotron %dms… 0 MB / ~%.0f MB".printf(
+			this.status_label.label = "Downloading Nemotron %dms... 0 MB / ~%.0f MB".printf(
 				chunk, expect / (1024.0 * 1024.0));
 			this.status_bar.fraction = 0.0;
 			this.status_bar.text = "0%";
@@ -164,9 +175,7 @@ namespace IBus.SherpaOnnx.Setup
 					bytes_written = GLib.File.new_for_path(this.archive_path + ".partial").query_info(
 						GLib.FileAttribute.STANDARD_SIZE, GLib.FileQueryInfoFlags.NONE).get_size();
 				}
-				var msg = new Soup.Message("GET",
-					"https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/%s.tar.bz2"
-						.printf(this.pending_name));
+				var msg = new Soup.Message("GET", this.pending_url);
 				if (bytes_written > 0) {
 					msg.request_headers.replace("Range", "bytes=%s-".printf(bytes_written.to_string()));
 				}
@@ -206,7 +215,7 @@ namespace IBus.SherpaOnnx.Setup
 					last_progress_us = now;
 					var use_total = total > 0 ? total : this.expect_bytes;
 					if (use_total <= 0) {
-						this.status_label.label = "Downloading Nemotron %dms… %.0f MB".printf(
+						this.status_label.label = "Downloading Nemotron %dms... %.0f MB".printf(
 							this.pending_chunk, bytes_written / (1024.0 * 1024.0));
 						this.status_bar.pulse();
 						this.status_bar.text = "";
@@ -215,7 +224,7 @@ namespace IBus.SherpaOnnx.Setup
 						this.status_bar.fraction = frac;
 						this.status_bar.text = "%d%%".printf((int) (frac * 100.0));
 						this.status_label.label =
-							"Downloading Nemotron %dms… %.0f MB / ~%.0f MB".printf(
+							"Downloading Nemotron %dms... %.0f MB / ~%.0f MB".printf(
 								this.pending_chunk,
 								bytes_written / (1024.0 * 1024.0),
 								use_total / (1024.0 * 1024.0));
@@ -252,7 +261,7 @@ namespace IBus.SherpaOnnx.Setup
 		private void extract_archive()
 		{
 			this.cancellable = new GLib.Cancellable();
-			this.status_label.label = "Verifying archive…";
+			this.status_label.label = "Verifying archive...";
 			this.status_bar.fraction = 0.0;
 			this.status_bar.text = "0%";
 			this.cancel_btn.sensitive = true;
@@ -276,7 +285,9 @@ namespace IBus.SherpaOnnx.Setup
 			var dest_root = GLib.Path.get_dirname(this.archive_path);
 			var staged = GLib.Path.build_filename(dest_root, this.pending_name);
 			GLib.DirUtils.create_with_parents(dest_root, 0755);
-			if (GLib.FileUtils.test(staged, GLib.FileTest.IS_DIR) && !this.models.ready(staged)) {
+			if (GLib.FileUtils.test(staged, GLib.FileTest.IS_DIR)
+					&& !GLib.FileUtils.test(GLib.Path.build_filename(staged, ".sha256"),
+						GLib.FileTest.IS_REGULAR)) {
 				try {
 					string[] argv = { "rm", "-rf", staged };
 					GLib.Process.spawn_sync(null, argv, null, GLib.SpawnFlags.SEARCH_PATH,
@@ -335,11 +346,12 @@ namespace IBus.SherpaOnnx.Setup
 			}
 			var staged = GLib.Path.build_filename(GLib.Path.get_dirname(this.archive_path),
 				this.pending_name);
-			if (!this.models.ready(staged)) {
+			if (!GLib.FileUtils.test(GLib.Path.build_filename(staged, ".sha256"),
+					GLib.FileTest.IS_REGULAR)) {
 				this.complete("Extract finished but model is not ready");
 				return;
 			}
-			this.status_label.label = "Installing system model…";
+			this.status_label.label = "Installing system model...";
 			this.status_bar.fraction = 1.0;
 			this.status_bar.text = "";
 			this.install_system();
@@ -371,7 +383,8 @@ namespace IBus.SherpaOnnx.Setup
 				this.complete(this.was_cancelled ? "" : "System install cancelled or failed");
 				return;
 			}
-			if (!this.models.ready(this.pending_system)) {
+			if (!GLib.FileUtils.test(GLib.Path.build_filename(this.pending_system, ".sha256"),
+					GLib.FileTest.IS_REGULAR)) {
 				this.complete("Install finished but system model is not ready");
 				return;
 			}
@@ -421,7 +434,7 @@ namespace IBus.SherpaOnnx.Setup
 				}
 				last_progress_us = now;
 				/* Idle capture: marshal progress onto the main loop. */
-				var progress_label = "Verifying… %.0f MB / %.0f MB".printf(
+				var progress_label = "Verifying... %.0f MB / %.0f MB".printf(
 					hashed / (1024.0 * 1024.0), total / (1024.0 * 1024.0));
 				var progress_fraction = total > 0
 					? Math.fmin(1.0, (double) hashed / (double) total) : 0.0;
@@ -436,7 +449,7 @@ namespace IBus.SherpaOnnx.Setup
 			}
 
 			GLib.Idle.add(() => {
-				this.archive_progress("Extracting…", 0.0);
+				this.archive_progress("Extracting...", 0.0);
 				return GLib.Source.REMOVE;
 			});
 
@@ -490,7 +503,7 @@ namespace IBus.SherpaOnnx.Setup
 					last_progress_us = now;
 					var pos = (int64) archive.position_compressed();
 					/* Idle capture: marshal progress onto the main loop. */
-					var progress_label = "Extracting… %.0f MB / ~%.0f MB".printf(
+					var progress_label = "Extracting... %.0f MB / ~%.0f MB".printf(
 						pos / (1024.0 * 1024.0), use_total / (1024.0 * 1024.0));
 					var progress_fraction = use_total > 0
 						? Math.fmin(1.0, (double) pos / (double) use_total) : 0.0;
@@ -517,7 +530,7 @@ namespace IBus.SherpaOnnx.Setup
 		{
 			this.busy = false;
 			this.cancel_btn.sensitive = true;
-			this.models.discard_partial(this.pending_chunk);
+			this.models.discard_partial(this.pending_pack_id);
 			this.status_bar.fraction = 0.0;
 			this.status_bar.text = "";
 			this.status_label.label = message;

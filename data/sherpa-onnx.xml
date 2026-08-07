@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- filename: sherpa-onnx.xml -->
+<!-- One engine entry per prefs language so GNOME groups Sherpa under that language. -->
 <component>
 	<name>org.roojs.IBus.SherpaOnnx</name>
 	<description>Sherpa ONNX speech dictation</description>
@@ -19,8 +20,391 @@
 			<layout>us</layout>
 			<longname>Sherpa ONNX</longname>
 			<description>Local speech-to-text dictation</description>
-			<!-- Panel badge: not "en" (language alone). Idle vs listening updated at runtime. -->
-			<symbol>voi</symbol>
+			<symbol>en-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-en-US</name>
+			<language>en</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>us</layout>
+			<longname>Sherpa ONNX (en-US)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>en-us-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-en-GB</name>
+			<language>en</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>gb</layout>
+			<longname>Sherpa ONNX (en-GB)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>en-gb-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-es-US</name>
+			<language>es</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>us</layout>
+			<longname>Sherpa ONNX (es-US)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>es-us-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-es-ES</name>
+			<language>es</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>es</layout>
+			<longname>Sherpa ONNX (es-ES)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>es-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-fr-FR</name>
+			<language>fr</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>fr</layout>
+			<longname>Sherpa ONNX (fr-FR)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>fr-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-fr-CA</name>
+			<language>fr</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>ca</layout>
+			<longname>Sherpa ONNX (fr-CA)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>fr-ca-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-it-IT</name>
+			<language>it</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>it</layout>
+			<longname>Sherpa ONNX (it-IT)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>it-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-pt-BR</name>
+			<language>pt</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>br</layout>
+			<longname>Sherpa ONNX (pt-BR)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>pt-br-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-pt-PT</name>
+			<language>pt</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>pt</layout>
+			<longname>Sherpa ONNX (pt-PT)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>pt-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-nl-NL</name>
+			<language>nl</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>nl</layout>
+			<longname>Sherpa ONNX (nl-NL)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>nl-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-de-DE</name>
+			<language>de</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>de</layout>
+			<longname>Sherpa ONNX (de-DE)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>de-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-tr-TR</name>
+			<language>tr</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>tr</layout>
+			<longname>Sherpa ONNX (tr-TR)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>tr-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-ru-RU</name>
+			<language>ru</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>ru</layout>
+			<longname>Sherpa ONNX (ru-RU)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>ru-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-ar-AR</name>
+			<language>ar</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>ara</layout>
+			<longname>Sherpa ONNX (ar-AR)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>ar-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-hi-IN</name>
+			<language>hi</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>in</layout>
+			<longname>Sherpa ONNX (hi-IN)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>hi-in-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-ja-JP</name>
+			<language>ja</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>jp</layout>
+			<longname>Sherpa ONNX (ja-JP)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>ja-jp-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-ko-KR</name>
+			<language>ko</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>kr</layout>
+			<longname>Sherpa ONNX (ko-KR)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>ko-kr-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-vi-VN</name>
+			<language>vi</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>vn</layout>
+			<longname>Sherpa ONNX (vi-VN)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>vi-vn-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-uk-UA</name>
+			<language>uk</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>ua</layout>
+			<longname>Sherpa ONNX (uk-UA)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>uk-ua-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-pl-PL</name>
+			<language>pl</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>pl</layout>
+			<longname>Sherpa ONNX (pl-PL)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>pl-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-sv-SE</name>
+			<language>sv</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>se</layout>
+			<longname>Sherpa ONNX (sv-SE)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>sv-se-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-cs-CZ</name>
+			<language>cs</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>cz</layout>
+			<longname>Sherpa ONNX (cs-CZ)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>cs-cz-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-nb-NO</name>
+			<language>nb</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>no</layout>
+			<longname>Sherpa ONNX (nb-NO)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>nb-no-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-da-DK</name>
+			<language>da</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>dk</layout>
+			<longname>Sherpa ONNX (da-DK)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>da-dk-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-bg-BG</name>
+			<language>bg</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>bg</layout>
+			<longname>Sherpa ONNX (bg-BG)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>bg-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-fi-FI</name>
+			<language>fi</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>fi</layout>
+			<longname>Sherpa ONNX (fi-FI)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>fi-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-hr-HR</name>
+			<language>hr</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>hr</layout>
+			<longname>Sherpa ONNX (hr-HR)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>hr-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-sk-SK</name>
+			<language>sk</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>sk</layout>
+			<longname>Sherpa ONNX (sk-SK)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>sk-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-zh-CN</name>
+			<language>zh</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>cn</layout>
+			<longname>Sherpa ONNX (zh-CN)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>zh-cn-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-hu-HU</name>
+			<language>hu</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>hu</layout>
+			<longname>Sherpa ONNX (hu-HU)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>hu-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-ro-RO</name>
+			<language>ro</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>ro</layout>
+			<longname>Sherpa ONNX (ro-RO)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>ro-v</symbol>
+			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
+			<rank>0</rank>
+		</engine>
+		<engine>
+			<name>sherpa-onnx-et-EE</name>
+			<language>et</language>
+			<license>LGPL</license>
+			<author>Alan Knowles &lt;alan@roojs.com&gt;</author>
+			<layout>ee</layout>
+			<longname>Sherpa ONNX (et-EE)</longname>
+			<description>Local speech-to-text dictation</description>
+			<symbol>et-ee-v</symbol>
 			<setup>/usr/bin/ibus-setup-sherpa-onnx</setup>
 			<rank>0</rank>
 		</engine>

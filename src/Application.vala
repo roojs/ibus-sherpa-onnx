@@ -148,12 +148,31 @@ namespace IBus.SherpaOnnx
 		public override void activate()
 		{
 			var models = new Models();
-			var model_dir = models.resolve();
+			var model_dir = "";
+			var link = GLib.Path.build_filename(models.user_config, "model");
+			if (GLib.File.new_for_path(link).query_file_type(GLib.FileQueryInfoFlags.NONE)
+					== GLib.FileType.DIRECTORY) {
+				var path = link;
+				try {
+					if (GLib.FileUtils.test(link, GLib.FileTest.IS_SYMLINK)) {
+						path = GLib.FileUtils.read_link(link);
+					}
+				} catch (GLib.FileError err) {
+				}
+				if (GLib.FileUtils.test(GLib.Path.build_filename(path, ".sha256"),
+						GLib.FileTest.IS_REGULAR)) {
+					model_dir = path;
+				}
+			}
+			IBus.init();
+
+			Engine.config = Config.load();
 			Engine.transcriber = null;
 			if (model_dir != "") {
 				GLib.debug("Loading model: %s", model_dir);
 				try {
-					Engine.transcriber = new Transcriber(model_dir);
+					Engine.transcriber = new Transcriber(model_dir,
+						Engine.config.key_file.get_string("general", "language"));
 				} catch (GLib.Error err) {
 					GLib.critical("%s", err.message);
 					Engine.transcriber = null;
@@ -162,9 +181,6 @@ namespace IBus.SherpaOnnx
 				GLib.debug("No ready model yet — engine idle until Preferences install");
 			}
 
-			IBus.init();
-
-			Engine.config = Config.load();
 			Engine.bind_hotkey();
 
 			var bus = new IBus.Bus();
@@ -177,7 +193,10 @@ namespace IBus.SherpaOnnx
 			});
 
 			var factory = new IBus.Factory(bus.get_connection());
-			factory.add_engine("sherpa-onnx", typeof(Engine));
+			foreach (var code in models.languages.get_groups()) {
+				var engine_id = code == "en" ? "sherpa-onnx" : "sherpa-onnx-" + code;
+				factory.add_engine(engine_id, typeof(Engine));
+			}
 
 			if (opt_ibus) {
 				bus.request_name("org.roojs.IBus.SherpaOnnx", 0);
@@ -193,18 +212,7 @@ namespace IBus.SherpaOnnx
 				"https://github.com/roojs/ibus-sherpa-onnx",
 				"", "ibus-sherpa-onnx"
 			);
-			component.add_engine((IBus.EngineDesc) GLib.Object.new(
-				typeof(IBus.EngineDesc),
-				"name", "sherpa-onnx",
-				"longname", "Sherpa ONNX",
-				"description", "Local speech-to-text dictation",
-				"language", "en",
-				"license", "LGPL",
-				"author", "Alan Knowles <alan@roojs.com>",
-				"icon", "",
-				"layout", "us",
-				"symbol", "voi"
-			));
+			models.register_engines(component);
 			if (!bus.register_component(component)) {
 				GLib.critical("Failed to register IBus component");
 				GLib.Process.exit(1);

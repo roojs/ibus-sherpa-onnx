@@ -120,6 +120,9 @@ namespace SherpaOnnx
 
 		[CCode (cname = "SherpaOnnxOnlineStreamInputFinished")]
 		public void input_finished ();
+
+		[CCode (cname = "SherpaOnnxOnlineStreamSetOption")]
+		public void set_option (string key, string value);
 	}
 
 	[CCode (cname = "SherpaOnnxOnlineRecognizer", free_function = "SherpaOnnxDestroyOnlineRecognizer", has_type_id = false)]

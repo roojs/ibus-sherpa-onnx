@@ -57,6 +57,7 @@ jobs:
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             libgtk-4-dev libadwaita-1-dev \
             libsoup-3.0-dev libarchive-dev \
+            libicu-dev libgee-0.8-dev \
             libonnxruntime-dev \
             gh
 
@@ -131,7 +132,8 @@ jobs:
             glib2-devel ibus-devel \
             gstreamer1-devel gstreamer1-plugins-base-devel \
             gtk4-devel libadwaita-devel \
-            libsoup3-devel libarchive-devel
+            libsoup3-devel libarchive-devel \
+            libicu-devel libgee-devel
 
       - name: Install libsherpa-onnx from roojs/sherpa-onnx release
         env:

@@ -4,7 +4,7 @@
 # https://github.com/roojs/sherpa-onnx/releases
 
 Name:           ibus-sherpa-onnx
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        IBus speech dictation engine using sherpa-onnx
 License:        LGPLv3+
@@ -24,6 +24,8 @@ BuildRequires:  gtk4-devel
 BuildRequires:  libadwaita-devel
 BuildRequires:  libsoup3-devel
 BuildRequires:  libarchive-devel
+BuildRequires:  libicu-devel
+BuildRequires:  libgee-devel
 BuildRequires:  libsherpa-onnx-c-api-devel
 BuildRequires:  chrpath
 
@@ -31,6 +33,7 @@ Requires:       ibus
 Requires:       libsherpa-onnx-c-api
 Requires:       gstreamer1-plugins-good
 Requires:       gstreamer1-plugins-base
+Requires:       gstreamer1-plugins-bad-free
 Requires:       gstreamer1-plugin-pipewire
 Requires:       polkit
 Requires:       gtk3

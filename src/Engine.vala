@@ -46,15 +46,27 @@ namespace IBus.SherpaOnnx
 		private uint anim_source = 0;
 		private int anim_phase = 0;
 		private bool saw_partial = false;
+		/** Idle panel badge: ''en-v'', ''en-us-v''; same lang/region collapses (''ro-v''). */
+		private string panel_symbol = "en-v";
 
 		construct
 		{
+			var code = "en";
+			var id = this.engine_name;
+			if (id != null && id.has_prefix("sherpa-onnx-")) {
+				code = id.substring("sherpa-onnx-".length);
+			}
+			var tag = code.down().split("-", 2);
+			this.panel_symbol = tag[0] + "-v";
+			if (tag.length >= 2 && tag[0] != tag[1]) {
+				this.panel_symbol = tag[0] + "-" + tag[1] + "-v";
+			}
 			this.prop = new IBus.Property(
 				"listening", IBus.PropType.TOGGLE, new IBus.Text.from_string("Mic off"),
 				"microphone-sensitivity-muted", new IBus.Text.from_string("Toggle speech dictation"),
 				true, true, IBus.PropState.UNCHECKED, null
 			);
-			this.prop.set_symbol(new IBus.Text.from_string("voi"));
+			this.prop.set_symbol(new IBus.Text.from_string(this.panel_symbol));
 			this.props = new IBus.PropList();
 			this.props.append(this.prop);
 
@@ -181,7 +193,7 @@ namespace IBus.SherpaOnnx
 				this.update_listening(false, false);
 			}
 
-			// Everything else (Shift+A, Ctrl+C, Enter, …): pass through to the client.
+			// Everything else (Shift+A, Ctrl+C, Enter, ...): pass through to the client.
 			// Do not forward_key_event — that drops or mishandles modifiers.
 			return false;
 		}
@@ -234,7 +246,7 @@ namespace IBus.SherpaOnnx
 			this.update_preedit_text(new IBus.Text.from_string(""), 0, false);
 			this.hide_preedit_text();
 			this.prop.set_label(new IBus.Text.from_string("Mic off"));
-			this.prop.set_symbol(new IBus.Text.from_string("voi"));
+			this.prop.set_symbol(new IBus.Text.from_string(this.panel_symbol));
 			this.prop.set_icon("microphone-sensitivity-muted");
 			this.prop.set_state(IBus.PropState.UNCHECKED);
 			this.update_property(this.prop);
@@ -260,7 +272,7 @@ namespace IBus.SherpaOnnx
 			this.stop_preedit_animation();
 			this.saw_partial = false;
 			this.prop.set_label(new IBus.Text.from_string("Mic off"));
-			this.prop.set_symbol(new IBus.Text.from_string("voi"));
+			this.prop.set_symbol(new IBus.Text.from_string(this.panel_symbol));
 			this.prop.set_icon("microphone-sensitivity-muted");
 			this.prop.set_state(IBus.PropState.UNCHECKED);
 			this.update_preedit_text(new IBus.Text.from_string(""), 0, false);
@@ -284,7 +296,7 @@ namespace IBus.SherpaOnnx
 					this.anim_source = 0;
 					return GLib.Source.REMOVE;
 				}
-				/* Bounce . → .. → ... → .. → . … */
+				/* Bounce . → .. → ... → .. → . ... */
 				this.anim_phase = (this.anim_phase + 1) % 4;
 				this.show_anim_preedit();
 				return GLib.Source.CONTINUE;

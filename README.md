@@ -30,6 +30,7 @@ sudo apt install \
   libgstreamer-plugins-base1.0-0 \
   gstreamer1.0-plugins-base \
   gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-bad \
   gstreamer1.0-pipewire \
   pkexec \
   polkitd \
@@ -45,7 +46,7 @@ Wait until that finishes with no errors before continuing.
 2. Scroll to **Assets**.
 3. Click to download **exactly** this file:  
    `libsherpa-onnx-c-api1_1.13.4-roojs3_amd64.deb`
-4. **Do not** download `libsherpa-onnx-c-api-dev_…`, `…dbgsym…`, or any `.ddeb`.
+4. **Do not** download `libsherpa-onnx-c-api-dev_...`, `...dbgsym...`, or any `.ddeb`.
 5. Save it in your **Downloads** folder.
 
 ### Step 3 — Download this input method
@@ -82,7 +83,7 @@ It downloads about **440 MB**, may ask for your password, turns Sherpa on as you
 
 ### Step 6 — Use it
 
-1. Click in any text field (browser, editor, chat, …).
+1. Click in any text field (browser, editor, chat, ...).
 2. Press **Ctrl+Shift+Space** to start listening.
 3. Speak.
 4. Press **Ctrl+Shift+Space** again (or start typing) to stop.
@@ -106,6 +107,7 @@ sudo dnf install \
   libarchive \
   gstreamer1-plugins-base \
   gstreamer1-plugins-good \
+  gstreamer1-plugins-bad-free \
   gstreamer1-plugin-pipewire \
   polkit
 ```
@@ -115,7 +117,7 @@ sudo dnf install \
 1. Open: https://github.com/roojs/sherpa-onnx/releases/latest  
 2. Under **Assets**, download **exactly** this file:  
    `libsherpa-onnx-c-api-1.13.4-roojs3.fc44.x86_64.rpm`  
-3. **Do not** download `…-devel…`, `…debuginfo…`, or `…debugsource…` files.  
+3. **Do not** download `...-devel...`, `...debuginfo...`, or `...debugsource...` files.  
 4. Save in **Downloads**.
 
 ### Step 3 — Download this input method

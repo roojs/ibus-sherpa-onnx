@@ -84,7 +84,7 @@ mkdir -p "$CACHE"
 cd "$CACHE"
 
 verify_archive() {
-  echo "Verifying SHA-256 of $ARCHIVE …"
+  echo "Verifying SHA-256 of $ARCHIVE ..."
   echo "$EXPECT_HASH  $ARCHIVE" | sha256sum -c -
 }
 
@@ -102,16 +102,16 @@ else
     fi
   fi
   if [ ! -f "$ARCHIVE" ]; then
-    echo "Downloading Nemotron ${CHUNK}ms …"
+    echo "Downloading Nemotron ${CHUNK}ms ..."
     if ! wget -c "$PRIMARY_URL" -O "$ARCHIVE"; then
-      echo "roojs URL failed; trying upstream k2-fsa …"
+      echo "roojs URL failed; trying upstream k2-fsa ..."
       rm -f "$ARCHIVE"
       wget -c "$FALLBACK_URL" -O "$ARCHIVE"
     fi
     verify_archive
   fi
 
-  echo "Unpacking $ARCHIVE …"
+  echo "Unpacking $ARCHIVE ..."
   tar --no-same-owner -xf "$ARCHIVE"
   if [ ! -f "$DIR_NAME/encoder.int8.onnx" ] || [ ! -f "$DIR_NAME/tokens.txt" ]; then
     echo "Unpack missing encoder/tokens; removing" >&2
@@ -121,7 +121,7 @@ else
   printf '%s\n' "$EXPECT_HASH" >"$DIR_NAME/.sha256"
 fi
 
-echo "Installing into system models (pkexec) …"
+echo "Installing into system models (pkexec) ..."
 if [ -x /usr/libexec/ibus-sherpa-onnx-install-model ]; then
   pkexec /usr/libexec/ibus-sherpa-onnx-install-model "$DIR_NAME"
 else

@@ -15,6 +15,8 @@ Build-Depends: debhelper-compat (= 13),
                libadwaita-1-dev,
                libsoup-3.0-dev,
                libarchive-dev,
+               libicu-dev,
+               libgee-0.8-dev,
                libsherpa-onnx-c-api-dev
 Standards-Version: 4.6.2
 Homepage: https://github.com/roojs/ibus-sherpa-onnx
@@ -30,6 +32,7 @@ Depends: ${shlibs:Depends},
          libsherpa-onnx-c-api1,
          gstreamer1.0-plugins-good,
          gstreamer1.0-plugins-base,
+         gstreamer1.0-plugins-bad,
          gstreamer1.0-pipewire | gstreamer1.0-pulseaudio,
          pkexec,
          polkitd,

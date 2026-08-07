@@ -34,7 +34,7 @@ namespace IBus.SherpaOnnx
 
 		/**
 		 * In-memory settings (group ''general'': ''hotkey'', ''notifications'',
-		 * ''preedit-animation'').
+		 * ''preedit-animation'', ''language'').
 		 */
 		public GLib.KeyFile key_file;
 
@@ -46,6 +46,7 @@ namespace IBus.SherpaOnnx
 			this.key_file.set_string("general", "hotkey", "Ctrl+Shift+Space");
 			this.key_file.set_boolean("general", "notifications", false);
 			this.key_file.set_boolean("general", "preedit-animation", true);
+			this.key_file.set_string("general", "language", "en");
 		}
 
 		/**

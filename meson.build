@@ -1,7 +1,7 @@
 project(
   'ibus-sherpa-onnx',
   ['c', 'vala'],
-  version: '0.1.0',
+  version: '0.2.0',
   meson_version: '>= 1.0.0',
   default_options: [
     'warning_level=1',
@@ -17,6 +17,14 @@ gst_app_dep = dependency('gstreamer-app-1.0')
 sherpa_dep = dependency('sherpa-onnx')
 ibus_dep = dependency('ibus-1.0')
 m_dep = meson.get_compiler('c').find_library('m')
+gnome = import('gnome')
+
+catalog_resources = gnome.compile_resources(
+  'ibus-sherpa-onnx-resources',
+  'resources/gresources.xml',
+  source_dir: 'resources',
+  c_name: 'ibus_sherpa_onnx_resources',
+)
 
 # Hand-written binding: src/sherpa-onnx.vapi (satisfies --pkg from sherpa_dep).
 add_project_arguments(
@@ -34,6 +42,7 @@ executable(
     'src/Transcriber.vala',
     'src/Config.vala',
     'src/Models.vala',
+    catalog_resources,
   ],
   dependencies: [
     glib_dep,
@@ -116,6 +125,9 @@ gtk_dep = dependency('gtk4')
 adw_dep = dependency('libadwaita-1')
 soup_dep = dependency('libsoup-3.0')
 archive_dep = dependency('libarchive')
+# Hand-written binding: src/icu-i18n.vapi + src/Icu.vala (UTF-8 API).
+icu_dep = dependency('icu-i18n')
+gee_dep = dependency('gee-0.8')
 
 # IBus Preferences / component <setup> (RooTerm Dialog naming: Preferences, Row*).
 executable(
@@ -124,12 +136,15 @@ executable(
     'src/setup/main.vala',
     'src/Config.vala',
     'src/Models.vala',
+    'src/Icu.vala',
     'src/setup/Row.vala',
     'src/setup/RowKeySelect.vala',
     'src/setup/RowSwitch.vala',
-    'src/setup/RowSelect.vala',
+    'src/setup/RowSelectModel.vala',
+    'src/setup/RowComboLanguage.vala',
     'src/setup/ModelDownload.vala',
     'src/setup/Preferences.vala',
+    catalog_resources,
   ],
   dependencies: [
     glib_dep,
@@ -139,6 +154,9 @@ executable(
     adw_dep,
     soup_dep,
     archive_dep,
+    icu_dep,
+    gee_dep,
+    ibus_dep,
     m_dep,
   ],
   install: true,

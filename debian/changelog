@@ -1,15 +1,15 @@
-ibus-sherpa-onnx (0.1.0-1) unstable; urgency=medium
+ibus-sherpa-onnx (0.2.0-1) unstable; urgency=medium
 
+  * Multilingual ASR: English-only Nemotron packs plus multilingual Nemotron 3.5
+      (560 / 1120 ms), selected from a GResource catalog (`languages.ini` /
+      `models.ini`).
+  * Preferences: searchable Language combo (ICU labels); Select model radios
+      filtered by language family; writes `general/language=`.
+  * Runtime: apply sherpa-onnx stream `language` for non-English locales.
+  * One IBus engine id per catalog language (for example sherpa-onnx,
+      sherpa-onnx-ja) so GNOME Settings groups the IME under that language; prefs
+      activates the matching engine on apply.
+  * Polkit install allowlist includes multilingual pack directory names.
 
-  * Initial release: IBus speech dictation engine via sherpa-onnx (Nemotron).
-  * Preferences (`ibus-setup-sherpa-onnx`): model download, polkit install into
-    `/usr/share/ibus-sherpa-onnx/models/`, user symlink, GNOME IME activation,
-    `ibus restart`.
-  * PATH wrapper launches prefs via `gtk-launch` so the window is not buried
-    behind the terminal.
-  * Hotkey toggle (default Ctrl+Shift+Space); key pass-through for normal typing
-    and app shortcuts (including Shift+letter).
-  * Optional CLI / GTK demos (`-Dcli=true`, `-Dgtk_demo=true`); not packaged.
-  * Debian and Fedora packages; model weights are not shipped in the package.
 
  -- Alan Knowles <alan@roojs.com>  Fri, 07 Aug 2026 00:00:00 +0800

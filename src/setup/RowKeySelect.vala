@@ -28,7 +28,7 @@ namespace IBus.SherpaOnnx.Setup
 	 * == Example ==
 	 *
 	 * {{{
-	 * var toggle = new RowKeySelect(config, "hotkey", "Toggle hotkey", "…");
+	 * var toggle = new RowKeySelect(config, "hotkey", "Toggle hotkey", "...");
 	 * group.add(toggle.row);
 	 * toggle.fill();
 	 * }}}
@@ -53,7 +53,7 @@ namespace IBus.SherpaOnnx.Setup
 			};
 			this.button.clicked.connect(() => {
 				this.capturing = true;
-				this.button.label = "Press a key…";
+				this.button.label = "Press a key...";
 			});
 			((Adw.ActionRow) this.row).add_suffix(this.button);
 			((Adw.ActionRow) this.row).set_activatable_widget(this.button);

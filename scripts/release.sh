@@ -87,11 +87,11 @@ if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; t
 	exit 0
 fi
 
-echo "Creating annotated tag ${tag}…"
+echo "Creating annotated tag ${tag}..."
 git tag -a "${tag}" -m "${tag}"
 
 branch="$(git rev-parse --abbrev-ref HEAD)"
-echo "Pushing ${branch} and ${tag} to origin…"
+echo "Pushing ${branch} and ${tag} to origin..."
 git push -u origin "${branch}"
 git push origin "${tag}"
 

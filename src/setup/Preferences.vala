@@ -19,9 +19,10 @@
 namespace IBus.SherpaOnnx.Setup
 {
 	/**
-	 * Single-page preferences: Listening (hotkey / notify / animation) and
-	 * Select model. Standalone {@link Adw.Window} hosting an
-	 * {@link Adw.PreferencesPage} — same shell as RooTerm ''Dialog.Preferences''.
+	 * Single-page preferences: Listening and Select model (language combo +
+	 * pack radios; packs not for the language are hidden). Standalone
+	 * {@link Adw.Window} hosting an {@link Adw.PreferencesPage} — RooTerm
+	 * ''Dialog.Preferences'' shell.
 	 *
 	 * Close saves settings and asks {@link ModelDownload} to link or fetch.
 	 * While fetching, the prefs page is replaced by the download status view
@@ -40,8 +41,13 @@ namespace IBus.SherpaOnnx.Setup
 
 		public Preferences(Gtk.Application app)
 		{
-			Object(application: app, title: "Sherpa ONNX Preferences",
-				resizable: false, default_width: 520, default_height: 560);
+			GLib.Object(
+				application: app,
+				title: "Sherpa ONNX Preferences",
+				resizable: false,
+				default_width: 520,
+				default_height: 720
+			);
 			this.config = Config.load();
 			this.download = new ModelDownload(this.models);
 
@@ -60,12 +66,20 @@ namespace IBus.SherpaOnnx.Setup
 				description = "Closing installs or switches to the selection"
 			};
 			page.add(models);
-			var model = new RowSelect(this.config, this.download);
+			var language = new RowComboLanguage(this.config, this.models);
+			this.rows.set("language", language);
+			models.add(language.row);
+			var model = new RowSelectModel(this.config, this.download);
 			this.rows.set("model", model);
 			model.add_to(models);
 
+			language.changed.connect((code) => {
+				model.family = this.models.languages.get_string(code, "family");
+			});
+
 			this.stack = new Gtk.Stack() {
-				vhomogeneous = false, hhomogeneous = false
+				vhomogeneous = false,
+				hhomogeneous = false
 			};
 			this.stack.add_named(page, "prefs");
 			this.stack.add_named(this.download, "download");
@@ -76,7 +90,8 @@ namespace IBus.SherpaOnnx.Setup
 				this.close();
 			});
 			var header = new Adw.HeaderBar() {
-				show_start_title_buttons = false, show_end_title_buttons = false
+				show_start_title_buttons = false,
+				show_end_title_buttons = false
 			};
 			header.pack_end(this.close_btn);
 			var toolbar = new Adw.ToolbarView();
@@ -108,7 +123,7 @@ namespace IBus.SherpaOnnx.Setup
 			/* Non-homogeneous stack still leaves the old allocation; force a new default size. */
 			this.resizable = true;
 			if (name == "prefs") {
-				this.set_default_size(520, 560);
+				this.set_default_size(520, 720);
 			} else {
 				var nat = 0;
 				this.stack.measure(Gtk.Orientation.VERTICAL, 520, null, out nat, null, null);
@@ -135,6 +150,9 @@ namespace IBus.SherpaOnnx.Setup
 				row.config = this.config;
 				row.fill();
 			}
+			var model = (RowSelectModel) this.rows.get("model");
+			var code = this.config.key_file.get_string("general", "language");
+			model.family = this.models.languages.get_string(code, "family");
 		}
 
 		private bool on_close_request()
@@ -145,20 +163,18 @@ namespace IBus.SherpaOnnx.Setup
 			((RowKeySelect) this.rows.get("hotkey")).fill();
 			this.config.save();
 
-			var chunk = ((RowSelect) this.rows.get("model")).selected_chunk();
-			if (!this.download.apply(chunk)) {
-				if (chunk != 0) {
-					this.restart_ibus();
-					return true;
-				}
-				return false;
+			var pack_id = ((RowSelectModel) this.rows.get("model")).current_id;
+			if (!this.download.apply(pack_id)) {
+				this.restart_ibus();
+				return true;
 			}
 			this.show_page("download");
 			return true;
 		}
 
 		/**
-		 * Make Sherpa the active GNOME IME, ''ibus restart'', close.
+		 * Register the prefs language’s IBus engine as the active GNOME IME,
+		 * ''ibus restart'', close.
 		 */
 		private void restart_ibus()
 		{
@@ -173,12 +189,13 @@ namespace IBus.SherpaOnnx.Setup
 		}
 
 		/**
-		 * Install Sherpa as the active GNOME IME: add to input sources if needed
-		 * and set ''current'' so the user does not hunt in Settings.
-		 * Component XML still supplies language/layout (''en'' / ''us'').
+		 * Add the engine for ''general/language='' to GNOME input sources and
+		 * make it current (Settings groups it under that language).
 		 */
 		private void install()
 		{
+			var language = this.config.key_file.get_string("general", "language");
+			var engine = language == "en" ? "sherpa-onnx" : "sherpa-onnx-" + language;
 			var schema = GLib.SettingsSchemaSource.get_default().lookup(
 				"org.gnome.desktop.input-sources", true);
 			if (schema == null) {
@@ -194,13 +211,13 @@ namespace IBus.SherpaOnnx.Setup
 			var iter = settings.get_value("sources").iterator();
 			while (iter.next("(ss)", out typ, out name)) {
 				builder.add("(ss)", typ, name);
-				if (typ == "ibus" && name == "sherpa-onnx") {
+				if (typ == "ibus" && name == engine) {
 					index = i;
 				}
 				i++;
 			}
 			if (index < 0) {
-				builder.add("(ss)", "ibus", "sherpa-onnx");
+				builder.add("(ss)", "ibus", engine);
 				index = i;
 				settings.set_value("sources", builder.end());
 			}
