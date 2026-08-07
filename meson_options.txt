@@ -1,0 +1,4 @@
+option('cli', type: 'boolean', value: false,
+  description: 'Build sherpa-onnx-mic (CLI mic → stdout smoke test)')
+option('gtk_demo', type: 'boolean', value: false,
+  description: 'Build sherpa-onnx-gtk (sideline composer demo)')
