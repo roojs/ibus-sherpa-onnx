@@ -22,8 +22,8 @@ namespace IBus.SherpaOnnx.Setup
 	 * Download or symlink a Nemotron streaming model chunk.
 	 *
 	 * A vertical box (label, progress, Cancel) shown instead of the prefs page
-	 * while Soup download + extract runs. Paths and readiness come from
-	 * {@link Models}.
+	 * while Soup download + libarchive extract runs. Paths and readiness come
+	 * from {@link Models}.
 	 */
 	public class ModelDownload : Gtk.Box
 	{
@@ -58,12 +58,13 @@ namespace IBus.SherpaOnnx.Setup
 		public ModelDownload(Models models)
 		{
 			Object(orientation: Gtk.Orientation.VERTICAL, spacing: 12,
-				valign: Gtk.Align.CENTER,
+				valign: Gtk.Align.START, vexpand: false,
 				margin_start: 24, margin_end: 24, margin_top: 24, margin_bottom: 24);
 			this.models = models;
 			this.soup.timeout = 0;
 			this.status_label = new Gtk.Label("") {
-				xalign = 0, wrap = true, hexpand = true
+				xalign = 0, wrap = false, hexpand = true,
+				ellipsize = Pango.EllipsizeMode.END, single_line_mode = true
 			};
 			this.status_bar = new Gtk.ProgressBar() {
 				hexpand = true, show_text = true
@@ -72,7 +73,18 @@ namespace IBus.SherpaOnnx.Setup
 				halign = Gtk.Align.END
 			};
 			this.cancel_btn.clicked.connect(() => {
-				this.cancel();
+				if (!this.busy) {
+					if (this.status_label.label != "") {
+						this.cancelled();
+					}
+					return;
+				}
+				this.was_cancelled = true;
+				this.cancel_btn.sensitive = false;
+				this.status_label.label = "Cancelling…";
+				this.status_bar.pulse();
+				this.status_bar.text = "";
+				this.cancellable.cancel();
 			});
 			this.append(this.status_label);
 			this.append(this.status_bar);
@@ -133,34 +145,12 @@ namespace IBus.SherpaOnnx.Setup
 		}
 
 		/**
-		 * Abort download/extract and emit {@link cancelled}.
-		 */
-		public void cancel()
-		{
-			if (!this.busy) {
-				if (this.status_label.label != "") {
-					this.cancelled();
-				}
-				return;
-			}
-			this.was_cancelled = true;
-			this.cancel_btn.sensitive = false;
-			this.status_label.label = "Cancelling…";
-			this.status_bar.pulse();
-			this.status_bar.text = "";
-			this.cancellable.cancel();
-		}
-
-		/**
 		 * Soup GET {@link archive_path} from k2-fsa ''asr-models'' (''.partial'' resume).
 		 */
 		private async void download_archive()
 		{
 			if (GLib.FileUtils.test(this.archive_path, GLib.FileTest.IS_REGULAR)) {
-				// Phase D: Archive.Read / WriteDisk extract of this.archive_path into
-				// user/cache staging (not tar subprocess), progress on status_bar,
-				// then .sha256 stamp, polkit move, user model symlink, finished(true).
-				this.complete("Extract not implemented yet (Phase D: libarchive)");
+				this.extract_archive();
 				return;
 			}
 			this.cancellable = new GLib.Cancellable();
@@ -243,10 +233,234 @@ namespace IBus.SherpaOnnx.Setup
 				return;
 			}
 
-			// Phase D: Archive.Read / WriteDisk extract of this.archive_path into
-			// user/cache staging (not tar subprocess), progress on status_bar,
-			// then .sha256 stamp, polkit move, user model symlink, finished(true).
-			this.complete("Extract not implemented yet (Phase D: libarchive)");
+			this.extract_archive();
+		}
+
+		/**
+		 * Verify, unpack, stamp, and link on a worker thread.
+		 *
+		 * Worker queues Idle → {@link archive_progress} / {@link archive_done}
+		 * on the main loop.
+		 */
+		private void extract_archive()
+		{
+			this.cancellable = new GLib.Cancellable();
+			this.status_label.label = "Verifying archive…";
+			this.status_bar.fraction = 0.0;
+			this.status_bar.text = "0%";
+			this.cancel_btn.sensitive = true;
+
+			var expect_path = GLib.Path.build_filename(this.models.checksums_dir,
+				this.pending_name + ".sha256");
+			var expected = "";
+			try {
+				var contents = "";
+				GLib.FileUtils.get_contents(expect_path, out contents);
+				expected = contents.strip().split_set(" \t\n", 2)[0];
+			} catch (GLib.Error err) {
+				this.complete("Missing checksum: %s".printf(expect_path));
+				return;
+			}
+			if (expected == "") {
+				this.complete("Empty checksum: %s".printf(expect_path));
+				return;
+			}
+
+			var dest_root = GLib.Path.build_filename(this.models.user_config, "models");
+			var user_path = GLib.Path.build_filename(dest_root, this.pending_name);
+			GLib.DirUtils.create_with_parents(dest_root, 0755);
+			if (GLib.FileUtils.test(user_path, GLib.FileTest.IS_DIR) && !this.models.ready(user_path)) {
+				try {
+					string[] argv = { "rm", "-rf", user_path };
+					GLib.Process.spawn_sync(null, argv, null, GLib.SpawnFlags.SEARCH_PATH,
+						null, null, null, null);
+				} catch (GLib.Error err) {
+					this.complete(err.message);
+					return;
+				}
+			}
+
+			/* Thread capture: snapshot fields the worker must not race with apply/cancel. */
+			var archive_path = this.archive_path;
+			var expect_bytes = this.expect_bytes;
+			var cancellable = this.cancellable;
+
+			new GLib.Thread<void*>("model-extract", () => {
+				/* Idle capture: error for main-loop archive_done. */
+				var done_error = "";
+				try {
+					this.unpack_archive(archive_path, dest_root, user_path, expected,
+						expect_bytes, cancellable);
+				} catch (GLib.IOError.CANCELLED err) {
+				} catch (GLib.Error err) {
+					done_error = err.message;
+				}
+				GLib.Idle.add(() => {
+					this.archive_done(done_error);
+					return GLib.Source.REMOVE;
+				});
+				return null;
+			});
+		}
+
+		/**
+		 * Main-loop progress update (called from Idle).
+		 */
+		private void archive_progress(string label, double fraction)
+		{
+			this.status_label.label = label;
+			this.status_bar.fraction = fraction;
+			this.status_bar.text = "%d%%".printf((int) (fraction * 100.0));
+		}
+
+		/**
+		 * Main-loop extract finish (called from Idle). Empty ''error'' is success.
+		 */
+		private void archive_done(string error)
+		{
+			if (this.was_cancelled || this.cancellable.is_cancelled()) {
+				this.complete("");
+				return;
+			}
+			if (error != "") {
+				this.complete(error);
+				return;
+			}
+			var user_path = GLib.Path.build_filename(this.models.user_config, "models",
+				this.pending_name);
+			if (!this.models.ready(user_path)) {
+				this.complete("Extract finished but model is not ready");
+				return;
+			}
+			this.busy = false;
+			this.cancel_btn.sensitive = true;
+			this.status_bar.fraction = 1.0;
+			this.status_bar.text = "Done";
+			this.status_label.label = "Model ready";
+			this.link(user_path);
+			this.finished(true, "");
+		}
+
+		/**
+		 * SHA-256 verify + libarchive extract into ''dest_root'', then write ''.sha256''.
+		 *
+		 * Runs on a worker thread; progress via Idle → {@link archive_progress}.
+		 */
+		private void unpack_archive(
+			string archive_path,
+			string dest_root,
+			string user_path,
+			string expected,
+			int64 expect_bytes,
+			GLib.Cancellable cancellable
+		) throws GLib.Error
+		{
+			var checksum = new GLib.Checksum(GLib.ChecksumType.SHA256);
+			var stream = GLib.File.new_for_path(archive_path).read();
+			var total = GLib.File.new_for_path(archive_path).query_info(
+				GLib.FileAttribute.STANDARD_SIZE, GLib.FileQueryInfoFlags.NONE).get_size();
+			var buf = new uint8[65536];
+			var hashed = (int64) 0;
+			var last_progress_us = (int64) 0;
+			while (true) {
+				if (cancellable.is_cancelled()) {
+					throw new GLib.IOError.CANCELLED("cancelled");
+				}
+				var n = stream.read(buf);
+				if (n <= 0) {
+					break;
+				}
+				checksum.update(buf, n);
+				hashed += n;
+				var now = GLib.get_monotonic_time();
+				if (last_progress_us != 0 && now - last_progress_us < 250000) {
+					continue;
+				}
+				last_progress_us = now;
+				/* Idle capture: marshal progress onto the main loop. */
+				var progress_label = "Verifying… %.0f MB / %.0f MB".printf(
+					hashed / (1024.0 * 1024.0), total / (1024.0 * 1024.0));
+				var progress_fraction = total > 0
+					? Math.fmin(1.0, (double) hashed / (double) total) : 0.0;
+				GLib.Idle.add(() => {
+					this.archive_progress(progress_label, progress_fraction);
+					return GLib.Source.REMOVE;
+				});
+			}
+			stream.close();
+			if (checksum.get_string() != expected) {
+				throw new GLib.IOError.FAILED("SHA-256 mismatch");
+			}
+
+			GLib.Idle.add(() => {
+				this.archive_progress("Extracting…", 0.0);
+				return GLib.Source.REMOVE;
+			});
+
+			var archive = new Archive.Read();
+			archive.support_filter_all();
+			archive.support_format_all();
+			var extractor = new Archive.WriteDisk();
+			extractor.set_options(Archive.ExtractFlags.TIME
+				| Archive.ExtractFlags.PERM
+				| Archive.ExtractFlags.SECURE_NODOTDOT
+				| Archive.ExtractFlags.SECURE_SYMLINKS);
+			extractor.set_standard_lookup();
+			if (archive.open_filename(archive_path, 10240) != Archive.Result.OK) {
+				throw new GLib.IOError.FAILED("Open archive: %s", archive.error_string());
+			}
+
+			unowned Archive.Entry entry;
+			var last = Archive.Result.OK;
+			last_progress_us = 0;
+			while ((last = archive.next_header(out entry)) == Archive.Result.OK) {
+				if (cancellable.is_cancelled()) {
+					throw new GLib.IOError.CANCELLED("cancelled");
+				}
+				var path = entry.pathname();
+				if (path == null || path == ""
+						|| GLib.Path.is_absolute(path)
+						|| path.has_prefix("../")
+						|| path.contains("/../")
+						|| path.has_suffix("/..")) {
+					throw new GLib.IOError.FAILED("Unsafe path in archive");
+				}
+				entry.set_pathname(GLib.Path.build_filename(dest_root, path));
+				if (extractor.write_header(entry) != Archive.Result.OK) {
+					continue;
+				}
+				unowned uint8[] block;
+				Archive.int64_t offset;
+				while (archive.read_data_block(out block, out offset) == Archive.Result.OK) {
+					if (extractor.write_data_block(block, offset) < 0) {
+						throw new GLib.IOError.FAILED("Extract write: %s",
+							extractor.error_string());
+					}
+				}
+				extractor.finish_entry();
+				var now = GLib.get_monotonic_time();
+				if (last_progress_us != 0 && now - last_progress_us < 250000) {
+					continue;
+				}
+				last_progress_us = now;
+				var pos = (int64) archive.position_compressed();
+				var use_total = expect_bytes > 0 ? expect_bytes : total;
+				/* Idle capture: marshal progress onto the main loop. */
+				var progress_label = "Extracting… %.0f MB / ~%.0f MB".printf(
+					pos / (1024.0 * 1024.0), use_total / (1024.0 * 1024.0));
+				var progress_fraction = use_total > 0
+					? Math.fmin(1.0, (double) pos / (double) use_total) : 0.0;
+				GLib.Idle.add(() => {
+					this.archive_progress(progress_label, progress_fraction);
+					return GLib.Source.REMOVE;
+				});
+			}
+			archive.close();
+			if (last != Archive.Result.EOF) {
+				throw new GLib.IOError.FAILED("Extract: %s", archive.error_string());
+			}
+			GLib.FileUtils.set_contents(
+				GLib.Path.build_filename(user_path, ".sha256"), expected + "\n");
 		}
 
 		/**

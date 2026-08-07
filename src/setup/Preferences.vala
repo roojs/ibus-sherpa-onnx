@@ -64,7 +64,9 @@ namespace IBus.SherpaOnnx.Setup
 			this.rows.set("model", model);
 			model.add_to(models);
 
-			this.stack = new Gtk.Stack();
+			this.stack = new Gtk.Stack() {
+				vhomogeneous = false, hhomogeneous = false
+			};
 			this.stack.add_named(page, "prefs");
 			this.stack.add_named(this.download, "download");
 			this.stack.visible_child_name = "prefs";
@@ -92,12 +94,30 @@ namespace IBus.SherpaOnnx.Setup
 				});
 			});
 			this.download.cancelled.connect(() => {
-				this.stack.visible_child_name = "prefs";
-				this.close_btn.visible = true;
+				this.show_page("prefs");
 			});
 
 			this.close_request.connect(this.on_close_request);
 			this.fill();
+		}
+
+		/**
+		 * Switch stack page and resize the window to that page’s natural height.
+		 */
+		private void show_page(string name)
+		{
+			this.stack.visible_child_name = name;
+			this.close_btn.visible = (name == "prefs");
+			/* Non-homogeneous stack still leaves the old allocation; force a new default size. */
+			this.resizable = true;
+			if (name == "prefs") {
+				this.set_default_size(520, 560);
+			} else {
+				var nat = 0;
+				this.stack.measure(Gtk.Orientation.VERTICAL, 520, null, out nat, null, null);
+				this.set_default_size(520, int.max(nat + 52, 160));
+			}
+			this.resizable = false;
 		}
 
 		/**
@@ -132,8 +152,7 @@ namespace IBus.SherpaOnnx.Setup
 			if (!this.download.apply(chunk)) {
 				return false;
 			}
-			this.stack.visible_child_name = "download";
-			this.close_btn.visible = false;
+			this.show_page("download");
 			return true;
 		}
 	}

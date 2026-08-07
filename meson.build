@@ -29,9 +29,9 @@ executable(
   'ibus-engine-sherpa-onnx',
   [
     'src/main.vala',
-    'src/application.vala',
-    'src/engine.vala',
-    'src/transcriber.vala',
+    'src/Application.vala',
+    'src/Engine.vala',
+    'src/Transcriber.vala',
     'src/Config.vala',
     'src/Models.vala',
   ],
@@ -74,7 +74,7 @@ executable(
   'sherpa-onnx-mic',
   [
     'src/cli/main.vala',
-    'src/transcriber.vala',
+    'src/Transcriber.vala',
   ],
   dependencies: [
     glib_dep,
@@ -94,6 +94,7 @@ executable(
 gtk_dep = dependency('gtk4')
 adw_dep = dependency('libadwaita-1')
 soup_dep = dependency('libsoup-3.0')
+archive_dep = dependency('libarchive')
 
 # IBus Preferences / component <setup> (RooTerm Dialog naming: Preferences, Row*).
 executable(
@@ -116,6 +117,7 @@ executable(
     gtk_dep,
     adw_dep,
     soup_dep,
+    archive_dep,
     m_dep,
   ],
   install: true,
@@ -133,10 +135,10 @@ install_emptydir(get_option('datadir') / 'ibus-sherpa-onnx' / 'models')
 executable(
   'sherpa-onnx-gtk',
   [
-    'src/gtk/gtk_main.vala',
+    'src/gtk/main.vala',
     'src/gtk/ComposerInput.vala',
     'src/gtk/ScrolledView.vala',
-    'src/transcriber.vala',
+    'src/Transcriber.vala',
   ],
   dependencies: [
     glib_dep,
