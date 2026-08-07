@@ -32,6 +32,7 @@ executable(
     'src/application.vala',
     'src/engine.vala',
     'src/transcriber.vala',
+    'src/Config.vala',
   ],
   dependencies: [
     glib_dep,
@@ -61,6 +62,12 @@ install_data(
   install_mode: 'rwxr-xr-x',
 )
 
+install_data(
+  'data/checksums/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25.sha256',
+  'data/checksums/sherpa-onnx-nemotron-speech-streaming-en-0.6b-1120ms-int8-2026-04-25.sha256',
+  install_dir: get_option('datadir') / 'ibus-sherpa-onnx' / 'checksums',
+)
+
 # Sideline: CLI stdout mic smoke test (not in the .deb).
 executable(
   'sherpa-onnx-mic',
@@ -83,33 +90,62 @@ executable(
   install: false,
 )
 
-gtk_dep = dependency('gtk4', required: false)
-adw_dep = dependency('libadwaita-1', required: false)
+gtk_dep = dependency('gtk4')
+adw_dep = dependency('libadwaita-1')
+
+# IBus Preferences / component <setup> (RooTerm Dialog naming: Preferences, Row*).
+executable(
+  'ibus-setup-sherpa-onnx',
+  [
+    'src/setup/main.vala',
+    'src/Config.vala',
+    'src/setup/Row.vala',
+    'src/setup/RowKeySelect.vala',
+    'src/setup/RowSwitch.vala',
+    'src/setup/RowSelect.vala',
+    'src/setup/ModelDownload.vala',
+    'src/setup/Preferences.vala',
+  ],
+  dependencies: [
+    glib_dep,
+    gobject_dep,
+    gio_unix_dep,
+    gtk_dep,
+    adw_dep,
+  ],
+  install: true,
+  install_dir: get_option('libexecdir'),
+)
+
+install_data(
+  'data/ibus-setup-sherpa-onnx.desktop',
+  install_dir: get_option('datadir') / 'applications',
+)
+
+install_emptydir(get_option('datadir') / 'ibus-sherpa-onnx' / 'models')
 
 # Sideline: GTK composer demo (optional; not in the .deb).
-if gtk_dep.found() and adw_dep.found()
-  executable(
-    'sherpa-onnx-gtk',
-    [
-      'src/gtk/gtk_main.vala',
-      'src/gtk/ComposerInput.vala',
-      'src/gtk/ScrolledView.vala',
-      'src/transcriber.vala',
-    ],
-    dependencies: [
-      glib_dep,
-      gobject_dep,
-      gio_unix_dep,
-      gst_dep,
-      gst_app_dep,
-      sherpa_dep,
-      gtk_dep,
-      adw_dep,
-      m_dep,
-    ],
-    vala_args: [
-      '--pkg=posix',
-    ],
-    install: false,
-  )
-endif
+executable(
+  'sherpa-onnx-gtk',
+  [
+    'src/gtk/gtk_main.vala',
+    'src/gtk/ComposerInput.vala',
+    'src/gtk/ScrolledView.vala',
+    'src/transcriber.vala',
+  ],
+  dependencies: [
+    glib_dep,
+    gobject_dep,
+    gio_unix_dep,
+    gst_dep,
+    gst_app_dep,
+    sherpa_dep,
+    gtk_dep,
+    adw_dep,
+    m_dep,
+  ],
+  vala_args: [
+    '--pkg=posix',
+  ],
+  install: false,
+)

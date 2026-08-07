@@ -160,6 +160,38 @@ namespace IBus.SherpaOnnx
 				);
 				GLib.Process.exit(1);
 			}
+			var stamp = GLib.Path.build_filename(model_dir, ".sha256");
+			if (!GLib.FileUtils.test(stamp, GLib.FileTest.IS_REGULAR)) {
+				GLib.critical(
+					"Model at %s has no .sha256 stamp (incomplete or old install). Re-run fetch-nemotron-model.sh.",
+					model_dir
+				);
+				GLib.Process.exit(1);
+			}
+			try {
+				string stamp_hash;
+				GLib.FileUtils.get_contents(stamp, out stamp_hash);
+				var tree = model_dir;
+				if (GLib.FileUtils.test(user_model, GLib.FileTest.IS_SYMLINK) && model_dir == user_model) {
+					tree = GLib.FileUtils.read_link(user_model);
+				}
+				var base = GLib.Path.get_basename(tree);
+				var expected = GLib.Path.build_filename("/usr/share/ibus-sherpa-onnx/checksums",
+					base + ".sha256");
+				if (!GLib.FileUtils.test(expected, GLib.FileTest.IS_REGULAR)) {
+					GLib.critical("No packaged checksum for model %s", base);
+					GLib.Process.exit(1);
+				}
+				string expect_hash;
+				GLib.FileUtils.get_contents(expected, out expect_hash);
+				if (stamp_hash.strip() != expect_hash.strip().split_set(" \t\n", 2)[0]) {
+					GLib.critical("Model checksum mismatch at %s", model_dir);
+					GLib.Process.exit(1);
+				}
+			} catch (GLib.Error err) {
+				GLib.critical("Model checksum check failed: %s", err.message);
+				GLib.Process.exit(1);
+			}
 
 			IBus.init();
 
@@ -171,30 +203,8 @@ namespace IBus.SherpaOnnx
 				GLib.Process.exit(1);
 			}
 
-			this.load_settings();
-
-			var keyval = (uint) 0;
-			var accel_mods = (IBus.ModifierType) 0;
-			IBus.accelerator_parse(Engine.hotkey, out keyval, out accel_mods);
-			if (keyval == 0) {
-				var normalized = Engine.hotkey.replace("Ctrl+", "Control+").replace("ctrl+", "Control+");
-				var plus = normalized.last_index_of_char('+');
-				if (plus >= 0) {
-					normalized = normalized.substring(0, plus + 1) + normalized.substring(plus + 1).down();
-				}
-				var kv = (uint) 0;
-				var md = (uint) 0;
-				if (IBus.key_event_from_string(normalized, out kv, out md)) {
-					keyval = kv;
-					accel_mods = (IBus.ModifierType) md;
-				}
-			}
-			if (keyval == 0) {
-				IBus.accelerator_parse("<Control><Shift>space", out keyval, out accel_mods);
-				GLib.warning("Could not parse hotkey '%s'; using Control+Shift+space", Engine.hotkey);
-			}
-			Engine.toggle_keyval = keyval;
-			Engine.toggle_mods = (uint) accel_mods;
+			Engine.config = Config.load();
+			Engine.bind_hotkey();
 
 			var bus = new IBus.Bus();
 			if (!bus.is_connected()) {
@@ -210,7 +220,8 @@ namespace IBus.SherpaOnnx
 
 			if (opt_ibus) {
 				bus.request_name("org.roojs.IBus.SherpaOnnx", 0);
-				GLib.debug("ibus mode: requested org.roojs.IBus.SherpaOnnx. Toggle=%s", Engine.hotkey);
+				GLib.debug("ibus mode: requested org.roojs.IBus.SherpaOnnx. Toggle=%s",
+					Engine.config.key_file.get_string("general", "hotkey"));
 				this.hold();
 				return;
 			}
@@ -237,49 +248,9 @@ namespace IBus.SherpaOnnx
 				GLib.critical("Failed to register IBus component");
 				GLib.Process.exit(1);
 			}
-			GLib.debug("Registered sherpa-onnx (unpackaged). Toggle=%s", Engine.hotkey);
+			GLib.debug("Registered sherpa-onnx (unpackaged). Toggle=%s",
+				Engine.config.key_file.get_string("general", "hotkey"));
 			this.hold();
-		}
-
-		/** Read ''settings.ini'' into {@link Engine} statics. */
-		private void load_settings()
-		{
-			Engine.hotkey = "Ctrl+Shift+Space";
-			Engine.notifications_enabled = false;
-			Engine.preedit_animation = true;
-			var path = GLib.Path.build_filename(
-				GLib.Environment.get_user_config_dir(), "ibus-sherpa-onnx", "settings.ini"
-			);
-			if (!GLib.FileUtils.test(path, GLib.FileTest.IS_REGULAR)) {
-				return;
-			}
-
-			var kf = new GLib.KeyFile();
-			try {
-				kf.load_from_file(path, GLib.KeyFileFlags.NONE);
-			} catch (GLib.Error err) {
-				GLib.debug("settings.ini: %s", err.message);
-				return;
-			}
-
-			if (!kf.has_group("general")) {
-				return;
-			}
-
-			if (kf.has_key("general", "hotkey")) {
-				var v = kf.get_string("general", "hotkey").strip();
-				if (v != "") {
-					Engine.hotkey = v;
-				}
-			}
-			if (kf.has_key("general", "notifications")) {
-				var s = kf.get_string("general", "notifications").strip().down();
-				Engine.notifications_enabled = (s == "true" || s == "1");
-			}
-			if (kf.has_key("general", "preedit-animation")) {
-				var s = kf.get_string("general", "preedit-animation").strip().down();
-				Engine.preedit_animation = (s == "true" || s == "1");
-			}
 		}
 	}
 }

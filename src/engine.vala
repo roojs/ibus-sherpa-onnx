@@ -32,20 +32,14 @@ namespace IBus.SherpaOnnx
 		/** Process-wide recognizer + mic (set by {@link Application}). */
 		public static Transcriber transcriber;
 
-		/** Toggle accelerator string from settings (set by {@link Application}). */
-		public static string hotkey = "Ctrl+Shift+Space";
+		/** Process-wide prefs (''settings.ini''); set by {@link Application} / {@link focus_in}. */
+		public static Config config = new Config();
 
-		/** Toggle accelerator keysym (set by {@link Application}). */
+		/** Parsed toggle keysym from config ''general/hotkey''. */
 		public static uint toggle_keyval = 0;
 
-		/** Toggle accelerator modifiers (set by {@link Application}). */
+		/** Parsed toggle modifiers from config ''general/hotkey''. */
 		public static uint toggle_mods = 0;
-
-		/** Desktop notifications on toggle (default off). */
-		public static bool notifications_enabled = false;
-
-		/** Animated preedit dots while listening before first partial (default on). */
-		public static bool preedit_animation = true;
 
 		private IBus.Property prop;
 		private IBus.PropList props;
@@ -92,6 +86,43 @@ namespace IBus.SherpaOnnx
 			base.enable();
 			this.register_properties(this.props);
 			this.update_ui();
+		}
+
+		public override void focus_in()
+		{
+			base.focus_in();
+			Engine.config = Config.load();
+			Engine.bind_hotkey();
+		}
+
+		/**
+		 * Parse config ''general/hotkey'' into {@link toggle_keyval} / {@link toggle_mods}.
+		 */
+		public static void bind_hotkey()
+		{
+			var hotkey = Engine.config.key_file.get_string("general", "hotkey");
+			var keyval = (uint) 0;
+			var accel_mods = (IBus.ModifierType) 0;
+			IBus.accelerator_parse(hotkey, out keyval, out accel_mods);
+			if (keyval == 0) {
+				var normalized = hotkey.replace("Ctrl+", "Control+").replace("ctrl+", "Control+");
+				var plus = normalized.last_index_of_char('+');
+				if (plus >= 0) {
+					normalized = normalized.substring(0, plus + 1) + normalized.substring(plus + 1).down();
+				}
+				var kv = (uint) 0;
+				var md = (uint) 0;
+				if (IBus.key_event_from_string(normalized, out kv, out md)) {
+					keyval = kv;
+					accel_mods = (IBus.ModifierType) md;
+				}
+			}
+			if (keyval == 0) {
+				IBus.accelerator_parse("<Control><Shift>space", out keyval, out accel_mods);
+				GLib.warning("Could not parse hotkey '%s'; using Control+Shift+space", hotkey);
+			}
+			Engine.toggle_keyval = keyval;
+			Engine.toggle_mods = (uint) accel_mods;
 		}
 
 		public override void property_activate(string prop_name, uint prop_state)
@@ -177,7 +208,7 @@ namespace IBus.SherpaOnnx
 		private void start_preedit_animation()
 		{
 			this.stop_preedit_animation();
-			if (!Engine.preedit_animation) {
+			if (!Engine.config.key_file.get_boolean("general", "preedit-animation")) {
 				var hint = "Listening…";
 				this.update_preedit_text(new IBus.Text.from_string(hint), (uint) hint.length, true);
 				return;
@@ -224,7 +255,7 @@ namespace IBus.SherpaOnnx
 
 		private void maybe_notify_toggle()
 		{
-			if (!Engine.notifications_enabled) {
+			if (!Engine.config.key_file.get_boolean("general", "notifications")) {
 				return;
 			}
 			var app = GLib.Application.get_default();
