@@ -55,7 +55,7 @@ Wait until that finishes with no errors before continuing.
 1. Open:  
    https://github.com/roojs/ibus-sherpa-onnx/releases/latest
 2. Under **Assets**, download **exactly** this file:  
-   `ibus-sherpa-onnx_0.1.0-1_amd64.deb`
+   `ibus-sherpa-onnx_0.2.0-1_amd64.deb`
 3. Save it in the **same Downloads** folder.
 
 You should now have **two** `.deb` files in Downloads.
@@ -67,7 +67,7 @@ In the terminal:
 ```bash
 cd ~/Downloads
 sudo dpkg -i libsherpa-onnx-c-api1_1.13.4-roojs3_amd64.deb
-sudo dpkg -i ibus-sherpa-onnx_0.1.0-1_amd64.deb
+sudo dpkg -i ibus-sherpa-onnx_0.2.0-1_amd64.deb
 ```
 
 Both commands should finish without “dependency problems”.  
@@ -126,7 +126,7 @@ sudo dnf install \
 
 1. Open: https://github.com/roojs/ibus-sherpa-onnx/releases/latest  
 2. Download **exactly** this file:  
-   `ibus-sherpa-onnx-0.1.0-1.fc44.x86_64.rpm`  
+   `ibus-sherpa-onnx-0.2.0-1.fc44.x86_64.rpm`  
 3. Save in **Downloads**.
 
 ### Step 4 — Install both (library first)
@@ -134,7 +134,7 @@ sudo dnf install \
 ```bash
 cd ~/Downloads
 sudo dnf install ./libsherpa-onnx-c-api-1.13.4-roojs3.fc44.x86_64.rpm
-sudo dnf install ./ibus-sherpa-onnx-0.1.0-1.fc44.x86_64.rpm
+sudo dnf install ./ibus-sherpa-onnx-0.2.0-1.fc44.x86_64.rpm
 ```
 
 ### Step 5 — Choose a speech model
