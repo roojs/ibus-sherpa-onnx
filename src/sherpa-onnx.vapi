@@ -101,7 +101,16 @@ namespace SherpaOnnx
 	[Compact]
 	public class OnlineRecognizerResult
 	{
-		public unowned string text;
+		[CCode (cname = "text")]
+		unowned string? bound_text;
+
+		/** Recognized text; never null (empty string if C pointer is NULL). */
+		public unowned string text {
+			get {
+				return this.bound_text ?? "";
+			}
+		}
+
 		public unowned string tokens;
 		[CCode (array_length = false)]
 		public unowned string? tokens_arr;

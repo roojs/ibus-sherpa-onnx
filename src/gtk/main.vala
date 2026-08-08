@@ -31,10 +31,10 @@ int main(string[] args)
 			Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
 		);
 
-		var engine = new IBus.SherpaOnnx.Engine();
-		IBus.SherpaOnnx.Transcriber transcriber;
+		var engine = new IBSO.Engine();
+		IBSO.Transcriber transcriber;
 		try {
-			transcriber = new IBus.SherpaOnnx.Transcriber(engine) {
+			transcriber = new IBSO.Transcriber(engine) {
 				model_dir = model_dir
 			};
 			transcriber.load();
@@ -65,7 +65,7 @@ int main(string[] args)
 		var toolbar = new Adw.ToolbarView();
 		toolbar.add_top_bar(header);
 
-		var input = new IBus.SherpaOnnx.ComposerInput();
+		var input = new IBSO.ComposerInput();
 		input.scrolled.max_height = 160;
 
 		/* Committed utterances + active partial (main loop only). */

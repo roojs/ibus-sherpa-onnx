@@ -4,7 +4,7 @@
 # https://github.com/roojs/sherpa-onnx/releases
 
 Name:           ibus-sherpa-onnx
-Version:        0.2.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        IBus speech dictation engine using sherpa-onnx
 License:        LGPLv3+
@@ -34,7 +34,6 @@ Requires:       ibus
 Requires:       libsherpa-onnx-c-api
 Requires:       gstreamer1-plugins-good
 Requires:       gstreamer1-plugins-base
-Requires:       gstreamer1-plugins-bad-free
 Requires:       gstreamer1-plugin-pipewire
 Requires:       polkit
 Requires:       gtk3
@@ -85,6 +84,9 @@ fi
 %{_datadir}/polkit-1/actions/org.roojs.ibus-sherpa-onnx.policy
 
 %changelog
+* Sat Aug 08 2026 Alan Knowles <alan@roojs.com> - 0.3.0-1
+- Worker-thread ASR queue; drop webrtcdsp AGC; IBSO namespace.
+
 * Fri Aug 07 2026 Alan Knowles <alan@roojs.com> - 0.2.0-1
 - Multilingual engines, packs.ini, ICU language labels, notification desktop.
 

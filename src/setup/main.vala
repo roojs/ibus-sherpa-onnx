@@ -14,7 +14,7 @@ int main(string[] args)
 	app.activate.connect(() => {
 		var win = app.active_window as Gtk.Window;
 		if (win == null) {
-			win = new IBus.SherpaOnnx.Setup.Preferences(app);
+			win = new IBSO.Setup.Preferences(app);
 		}
 		win.present();
 	});

@@ -1,3 +1,13 @@
+ibus-sherpa-onnx (0.3.0-1) unstable; urgency=medium
+
+  * Mic ASR: dedicated worker thread + AsyncQueue so appsink no longer drops
+    audio under inference load (removed drop=true).
+  * Drop WebRTC AGC (webrtcdsp); no longer depends on it for capture.
+  * Vala namespace IBus.SherpaOnnx renamed to IBSO.
+  * VAPI OnlineRecognizerResult.text normalizes NULL to empty string.
+
+ -- Alan Knowles <alan@roojs.com>  Sat, 08 Aug 2026 13:30:00 +0800
+
 ibus-sherpa-onnx (0.2.0-1) unstable; urgency=medium
 
   * Multilingual ASR: English-only Nemotron packs plus multilingual Nemotron 3.5

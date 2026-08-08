@@ -16,7 +16,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-namespace IBus.SherpaOnnx
+namespace IBSO
 {
 	private static GLib.FileStream? debug_log_file = null;
 	private static bool debug_log_in_progress = false;

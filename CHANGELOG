@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 - 2026-08-08
+
+- Mic ASR: decode on a dedicated worker thread fed by `GLib.AsyncQueue` so
+  GStreamer no longer drops audio when inference stalls (removed
+  `appsink drop=true`).
+- Drop WebRTC AGC (`webrtcdsp`); onset after silence was over-amplified.
+- Vala namespace `IBus.SherpaOnnx` → `IBSO` (avoids clashing with `SherpaOnnx`).
+- VAPI: `OnlineRecognizerResult.text` normalizes C NULL to `""`.
+
 ## 0.2.0 - 2026-08-07
 
 - Multilingual ASR: English-only Nemotron packs plus multilingual Nemotron 3.5

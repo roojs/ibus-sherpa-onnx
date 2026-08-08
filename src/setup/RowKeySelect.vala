@@ -16,7 +16,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-namespace IBus.SherpaOnnx.Setup
+namespace IBSO.Setup
 {
 	/**
 	 * Key-capture button on an {@link Adw.ActionRow} for a KeyFile string

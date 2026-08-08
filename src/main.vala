@@ -13,5 +13,5 @@
 int main(string[] args)
 {
 	Gst.init(ref args);
-	return new IBus.SherpaOnnx.Application().run(args);
+	return new IBSO.Application().run(args);
 }

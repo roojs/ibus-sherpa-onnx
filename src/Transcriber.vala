@@ -16,7 +16,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-namespace IBus.SherpaOnnx
+namespace IBSO
 {
 	/**
 	 * Streaming mic ASR: GStreamer capture → sherpa-onnx online transducer.
@@ -33,18 +33,42 @@ namespace IBus.SherpaOnnx
 	 * {@link endpoint} for signal clients.
 	 * {@link load} is slow; {@link start} / {@link stop} only flip the mic.
 	 *
+	 * Threads: appsink pushes PCM (or a reset) onto {@link GLib.AsyncQueue};
+	 * one worker owns sherpa accept/decode/reset; Idle marshals text to main.
+	 * No mutexes — queue + worker ownership only.
+	 *
 	 * @since 0.2
 	 */
 	public class Transcriber : GLib.Object
 	{
-		private global::SherpaOnnx.OnlineRecognizer recognizer;
-		private global::SherpaOnnx.OnlineStream stream;
+		/** Queue item: PCM for the worker, or {@link PcmChunk.for_reset}. */
+		private class PcmChunk
+		{
+			public float[] samples;
+			public bool reset;
+
+			public PcmChunk(owned float[] samples)
+			{
+				this.samples = (owned) samples;
+				this.reset = false;
+			}
+
+			public PcmChunk.for_reset()
+			{
+				this.samples = {};
+				this.reset = true;
+			}
+		}
+
+		private SherpaOnnx.OnlineRecognizer recognizer;
+		private SherpaOnnx.OnlineStream stream;
 		private Gst.Pipeline pipeline;
-		private string pending_partial = "";
-		private bool partial_idle_queued = false;
+		private GLib.AsyncQueue<PcmChunk> audio_queue;
+		private bool worker_running = false;
+		/** Worker-only current hypothesis (main reads {@link last_text} via Idle). */
+		private string hypothesis = "";
 		private int partial_updates = 0;
 		private int64 segment_start_us = 0;
-		private GLib.Mutex emit_lock = GLib.Mutex();
 		/** Stream ''language'' option; empty skips ''set_option'' (English-only packs). */
 		private string stream_language = "";
 
@@ -63,7 +87,7 @@ namespace IBus.SherpaOnnx
 		/** True while the capture pipeline is PLAYING. */
 		public bool listening { get; private set; default = false; }
 
-		/** Current unfinished hypothesis (empty when idle or after endpoint/stop). */
+		/** Current unfinished hypothesis (main loop; updated from Idle). */
 		public string last_text { get; private set; default = ""; }
 
 		/** Token count from the last endpoint (for CLI --stats). */
@@ -122,13 +146,13 @@ namespace IBus.SherpaOnnx
 				Posix.dup2(devnull, Posix.STDERR_FILENO);
 				Posix.close(devnull);
 			}
-			this.recognizer = new global::SherpaOnnx.OnlineRecognizer(global::SherpaOnnx.OnlineRecognizerConfig() {
-				feat_config = global::SherpaOnnx.FeatureConfig() {
+			this.recognizer = new SherpaOnnx.OnlineRecognizer(SherpaOnnx.OnlineRecognizerConfig() {
+				feat_config = SherpaOnnx.FeatureConfig() {
 					sample_rate = 16000,
 					feature_dim = 80,
 				},
-				model_config = global::SherpaOnnx.OnlineModelConfig() {
-					transducer = global::SherpaOnnx.OnlineTransducerModelConfig() {
+				model_config = SherpaOnnx.OnlineModelConfig() {
+					transducer = SherpaOnnx.OnlineTransducerModelConfig() {
 						encoder = GLib.Path.build_filename(this.model_dir, "encoder.int8.onnx"),
 						decoder = GLib.Path.build_filename(this.model_dir, "decoder.int8.onnx"),
 						joiner = GLib.Path.build_filename(this.model_dir, "joiner.int8.onnx"),
@@ -162,24 +186,123 @@ namespace IBus.SherpaOnnx
 				this.stream.set_option("language", this.stream_language);
 			}
 
-			/* webrtcdsp AGC (gain-control); echo-cancel off — no playback probe. */
+			this.audio_queue = new GLib.AsyncQueue<PcmChunk>();
+
+			/* No webrtcdsp AGC: onset after silence was over-amplified. Back-pressure
+			 * via drop=false instead of silently discarding mic buffers. */
 			this.pipeline = (Gst.Pipeline) Gst.parse_launch(
 				"autoaudiosrc ! audioconvert ! audioresample ! "
-				+ "audio/x-raw,format=S16LE,layout=interleaved,channels=1,rate=16000 ! "
-				+ "webrtcdsp gain-control=true echo-cancel=false ! "
-				+ "audioconvert ! audioresample ! "
 				+ "audio/x-raw,format=F32LE,channels=1,rate=16000 ! "
-				+ "appsink name=sink emit-signals=true max-buffers=10 drop=true sync=false"
+				+ "appsink name=sink emit-signals=true max-buffers=200 drop=false sync=false"
 			);
 			var sink = (Gst.App.Sink) this.pipeline.get_by_name("sink");
 			sink.new_sample.connect(() => {
 				return this.on_new_sample(sink);
 			});
+
+			this.worker_running = true;
+			new GLib.Thread<void>("sherpa-asr", () => {
+				while (this.worker_running) {
+					this.processing_loop();
+				}
+			});
 		}
 
 		/**
-		 * GStreamer appsink ''new-sample'': accept PCM, decode, Idle-marshal
-		 * {@link partial} / {@link endpoint}. Runs on the streaming thread.
+		 * One ASR worker iteration: pop queue, decode, Idle-marshal UI.
+		 */
+		private void processing_loop()
+		{
+			var chunk = this.audio_queue.timeout_pop(100000);
+			if (chunk == null) {
+				return;
+			}
+
+			if (chunk.reset) {
+				this.recognizer.reset(this.stream);
+				if (this.stream_language != "") {
+					this.stream.set_option("language", this.stream_language);
+				}
+				this.hypothesis = "";
+				this.partial_updates = 0;
+				this.segment_start_us = GLib.get_monotonic_time();
+				return;
+			}
+
+			if (!this.listening) {
+				return;
+			}
+
+			this.stream.accept_waveform(16000, chunk.samples);
+			while (this.recognizer.is_ready(this.stream) == 1) {
+				this.recognizer.decode(this.stream);
+			}
+
+			var result = this.recognizer.get_result(this.stream);
+			if (result.text != "" && result.text != this.hypothesis) {
+				this.hypothesis = result.text;
+				this.partial_updates++;
+				var copy = result.text;
+				GLib.Idle.add(() => {
+					if (!this.listening) {
+						return GLib.Source.REMOVE;
+					}
+					this.last_text = copy;
+					this.engine.on_partial(copy);
+					this.partial(copy);
+					return GLib.Source.REMOVE;
+				});
+			}
+
+			if (this.recognizer.is_endpoint(this.stream) != 1) {
+				return;
+			}
+
+			if (this.hypothesis == "") {
+				this.recognizer.reset(this.stream);
+				if (this.stream_language != "") {
+					this.stream.set_option("language", this.stream_language);
+				}
+				this.hypothesis = "";
+				this.partial_updates = 0;
+				this.segment_start_us = GLib.get_monotonic_time();
+				return;
+			}
+
+			var commit = this.hypothesis;
+			var wall_s = (GLib.get_monotonic_time() - this.segment_start_us) / 1000000.0;
+			var audio_s = 0.0;
+			if (result.timestamps != null && result.count > 0) {
+				audio_s = Math.fmax(0.0, result.timestamps[result.count - 1] - result.timestamps[0]);
+			}
+			var tokens = (int) result.count;
+			var partials = this.partial_updates;
+			GLib.Idle.add(() => {
+				if (!this.listening) {
+					return GLib.Source.REMOVE;
+				}
+				this.last_token_count = tokens;
+				this.last_audio_s = audio_s;
+				this.last_wall_s = wall_s;
+				this.last_partial_count = partials;
+				this.last_text = "";
+				this.engine.on_endpoint(commit);
+				this.endpoint(commit);
+				return GLib.Source.REMOVE;
+			});
+
+			this.recognizer.reset(this.stream);
+			if (this.stream_language != "") {
+				this.stream.set_option("language", this.stream_language);
+			}
+			this.hypothesis = "";
+			this.partial_updates = 0;
+			this.segment_start_us = GLib.get_monotonic_time();
+		}
+
+		/**
+		 * GStreamer appsink ''new-sample'': copy PCM onto {@link audio_queue} only.
+		 * Decode runs on {@link processing_loop}.
 		 *
 		 * @param sink appsink that emitted the sample
 		 * @return flow result for the appsink
@@ -189,6 +312,10 @@ namespace IBus.SherpaOnnx
 			var sample = sink.pull_sample();
 			if (sample == null) {
 				return Gst.FlowReturn.ERROR;
+			}
+
+			if (!this.listening) {
+				return Gst.FlowReturn.OK;
 			}
 
 			var buffer = sample.get_buffer();
@@ -204,75 +331,9 @@ namespace IBus.SherpaOnnx
 			if (map.size >= sizeof(float)) {
 				var samples = new float[map.size / sizeof(float)];
 				GLib.Memory.copy((void*) samples, map.data, map.size);
-				this.stream.accept_waveform(16000, samples);
+				this.audio_queue.push(new PcmChunk((owned) samples));
 			}
 			buffer.unmap(map);
-
-			while (this.recognizer.is_ready(this.stream) == 1) {
-				this.recognizer.decode(this.stream);
-			}
-
-			var result = this.recognizer.get_result(this.stream);
-			if (result.text != null && result.text != "" && result.text != this.last_text) {
-				this.last_text = result.text;
-				this.partial_updates++;
-				this.emit_lock.lock();
-				this.pending_partial = result.text;
-				var need_idle = !this.partial_idle_queued;
-				if (need_idle) {
-					this.partial_idle_queued = true;
-				}
-				this.emit_lock.unlock();
-				if (need_idle) {
-					GLib.Idle.add(() => {
-						this.emit_lock.lock();
-						var copy = this.pending_partial;
-						this.partial_idle_queued = false;
-						this.emit_lock.unlock();
-						this.engine.on_partial(copy);
-						this.partial(copy);
-						return GLib.Source.REMOVE;
-					});
-				}
-			}
-
-			if (this.recognizer.is_endpoint(this.stream) != 1) {
-				return Gst.FlowReturn.OK;
-			}
-			if (this.last_text == "") {
-				this.recognizer.reset(this.stream);
-				if (this.stream_language != "") {
-					this.stream.set_option("language", this.stream_language);
-				}
-				return Gst.FlowReturn.OK;
-			}
-
-			var commit = this.last_text;
-			var wall_s = (GLib.get_monotonic_time() - this.segment_start_us) / 1000000.0;
-			var audio_s = 0.0;
-			if (result.timestamps != null && result.count > 0) {
-				audio_s = Math.fmax(0.0, result.timestamps[result.count - 1] - result.timestamps[0]);
-			}
-			var tokens = (int) result.count;
-			var partials = this.partial_updates;
-
-			this.last_text = "";
-			this.partial_updates = 0;
-			this.segment_start_us = GLib.get_monotonic_time();
-			this.recognizer.reset(this.stream);
-			if (this.stream_language != "") {
-				this.stream.set_option("language", this.stream_language);
-			}
-
-			GLib.Idle.add(() => {
-				this.last_token_count = tokens;
-				this.last_audio_s = audio_s;
-				this.last_wall_s = wall_s;
-				this.last_partial_count = partials;
-				this.engine.on_endpoint(commit);
-				this.endpoint(commit);
-				return GLib.Source.REMOVE;
-			});
 			return Gst.FlowReturn.OK;
 		}
 
@@ -282,14 +343,14 @@ namespace IBus.SherpaOnnx
 			if (this.listening) {
 				return;
 			}
+			this.audio_queue = new GLib.AsyncQueue<PcmChunk>();
+			this.audio_queue.push(new PcmChunk.for_reset());
 			this.last_text = "";
-			this.partial_updates = 0;
-			this.segment_start_us = GLib.get_monotonic_time();
-			this.pipeline.set_state(Gst.State.PLAYING);
 			this.listening = true;
+			this.pipeline.set_state(Gst.State.PLAYING);
 		}
 
-		/** Stop mic capture and reset the stream (main loop). Idempotent. */
+		/** Stop mic capture and queue a stream reset (main loop). Idempotent. */
 		public void stop()
 		{
 			if (!this.listening) {
@@ -297,16 +358,9 @@ namespace IBus.SherpaOnnx
 			}
 			this.listening = false;
 			this.pipeline.set_state(Gst.State.NULL);
-			this.recognizer.reset(this.stream);
-			if (this.stream_language != "") {
-				this.stream.set_option("language", this.stream_language);
-			}
+			this.audio_queue = new GLib.AsyncQueue<PcmChunk>();
+			this.audio_queue.push(new PcmChunk.for_reset());
 			this.last_text = "";
-			this.partial_updates = 0;
-			this.emit_lock.lock();
-			this.pending_partial = "";
-			this.partial_idle_queued = false;
-			this.emit_lock.unlock();
 		}
 	}
 }

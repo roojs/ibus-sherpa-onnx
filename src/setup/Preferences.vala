@@ -16,7 +16,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-namespace IBus.SherpaOnnx.Setup
+namespace IBSO.Setup
 {
 	/**
 	 * Single-page preferences: Listening and Select model (language combo +

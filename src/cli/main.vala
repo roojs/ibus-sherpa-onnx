@@ -81,12 +81,12 @@ int main(string[] args)
 		}
 	}
 
-	var engine = new IBus.SherpaOnnx.Engine() {
+	var engine = new IBSO.Engine() {
 		language = language
 	};
-	IBus.SherpaOnnx.Transcriber transcriber;
+	IBSO.Transcriber transcriber;
 	try {
-		transcriber = new IBus.SherpaOnnx.Transcriber(engine) {
+		transcriber = new IBSO.Transcriber(engine) {
 			model_dir = model_dir
 		};
 		transcriber.load();
