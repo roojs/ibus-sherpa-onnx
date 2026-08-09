@@ -86,7 +86,7 @@ fi
 %changelog
 * Sat Aug 08 2026 Alan Knowles <alan@roojs.com> - 0.3.0-1
 - Worker-thread ASR queue; drop webrtcdsp AGC; IBSO namespace.
-
+1
 * Fri Aug 07 2026 Alan Knowles <alan@roojs.com> - 0.2.0-1
 - Multilingual engines, packs.ini, ICU language labels, notification desktop.
 
