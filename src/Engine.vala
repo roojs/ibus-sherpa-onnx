@@ -83,6 +83,7 @@ namespace IBSO
 		public override void enable()
 		{
 			base.enable();
+			this.debug_lifecycle("enable");
 			this.ensure_transcriber();
 			this.register_properties(this.props);
 			this.update_ui();
@@ -91,9 +92,41 @@ namespace IBSO
 		public override void focus_in()
 		{
 			base.focus_in();
+			this.debug_lifecycle("focus_in");
 			Engine.config = Config.load();
 			Engine.bind_hotkey();
 			this.ensure_transcriber();
+		}
+
+		public override void focus_out()
+		{
+			this.debug_lifecycle("focus_out");
+			base.focus_out();
+		}
+
+		/**
+		 * Richer focus-in when the engine is constructed with ''has_focus_id''
+		 * (may not fire on the stock Factory path — logged if it does).
+		 */
+		public override void focus_in_id(string object_path, string client)
+		{
+			this.debug_lifecycle("focus_in_id",
+				"path=%s client=%s".printf(object_path, client));
+			base.focus_in_id(object_path, client);
+		}
+
+		public override void focus_out_id(string object_path)
+		{
+			this.debug_lifecycle("focus_out_id", "path=%s".printf(object_path));
+			base.focus_out_id(object_path);
+		}
+
+		public override void set_content_type(uint purpose, uint hints)
+		{
+			this.debug_lifecycle("set_content_type",
+				"purpose=%u(%s) hints=%u".printf(purpose,
+					((IBus.InputPurpose) purpose).to_string(), hints));
+			base.set_content_type(purpose, hints);
 		}
 
 		/**
@@ -102,10 +135,47 @@ namespace IBSO
 		 */
 		public override void reset()
 		{
+			this.debug_lifecycle("reset");
 			if (this.transcriber != null && this.transcriber.listening) {
 				this.update_listening(false, false);
 			}
 			base.reset();
+		}
+
+		/**
+		 * 0.6 Phase A0: one-line lifecycle dump for focus / reset investigation.
+		 *
+		 * @param event callback name (''focus_in'', ''reset'', …)
+		 * @param extra optional extra fields (client path, purpose, …)
+		 */
+		private void debug_lifecycle(string event, string extra = "")
+		{
+			var listening = this.transcriber != null && this.transcriber.listening;
+			uint purpose = 0;
+			uint hints = 0;
+			this.get_content_type(out purpose, out hints);
+			if (extra == "") {
+				GLib.debug("%s: listening=%s has_focus=%s enabled=%s purpose=%u(%s) hints=%u engine=%s",
+					event,
+					listening.to_string(),
+					this.has_focus.to_string(),
+					this.enabled.to_string(),
+					purpose,
+					((IBus.InputPurpose) purpose).to_string(),
+					hints,
+					this.engine_name ?? "");
+				return;
+			}
+			GLib.debug("%s: listening=%s has_focus=%s enabled=%s purpose=%u(%s) hints=%u engine=%s %s",
+				event,
+				listening.to_string(),
+				this.has_focus.to_string(),
+				this.enabled.to_string(),
+				purpose,
+				((IBus.InputPurpose) purpose).to_string(),
+				hints,
+				this.engine_name ?? "",
+				extra);
 		}
 
 		/**
@@ -174,18 +244,36 @@ namespace IBSO
 				return false;
 			}
 
-			// While listening, any real key stops + commits, then the key is delivered.
+			/*
+			 * WM / app accelerators (Alt+Tab, Super+…, Ctrl+Alt+Left/Right,
+			 * Ctrl+Tab, …) still reach the IME. Do not treat them as “typing
+			 * interrupts dictation” — pass through and keep listening.
+			 * Shift alone (e.g. capital letter) is still a typing interrupt.
+			 */
+			var accel = mods & (IBus.ModifierType.CONTROL_MASK | IBus.ModifierType.MOD1_MASK
+				| IBus.ModifierType.SUPER_MASK | IBus.ModifierType.META_MASK
+				| IBus.ModifierType.HYPER_MASK);
+			if (accel != 0) {
+				if (this.transcriber != null && this.transcriber.listening) {
+					GLib.debug("key ignore (accel while listening): keyval=0x%x mods=0x%x",
+						keyval, mods);
+				}
+				return false;
+			}
+
+			// While listening, a real (non-accelerator) key stops + commits, then delivers.
 			if (this.transcriber != null && this.transcriber.listening) {
 				this.update_listening(false, false);
 			}
 
-			// Everything else (Shift+A, Ctrl+C, Enter, ...): pass through to the client.
+			// Everything else (Shift+A, Enter, …): pass through to the client.
 			// Do not forward_key_event — that drops or mishandles modifiers.
 			return false;
 		}
 
 		public override void disable()
 		{
+			this.debug_lifecycle("disable");
 			if (this.transcriber != null && this.transcriber.listening) {
 				this.update_listening(false, false);
 				return;

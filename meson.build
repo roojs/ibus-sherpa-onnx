@@ -6,6 +6,8 @@ project(
   default_options: [
     'warning_level=1',
     'buildtype=debugoptimized',
+    # Match Debian/Fedora layout; avoid accidental /usr/local installs.
+    'prefix=/usr',
   ],
 )
 

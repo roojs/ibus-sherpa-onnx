@@ -86,11 +86,21 @@ Binaries under `build/`:
 | `sherpa-onnx-mic` | `-Dcli=true` | no | CLI mic → stdout smoke test |
 | `sherpa-onnx-gtk` | `-Dgtk_demo=true` | no | GTK composer demo |
 
-Install into a prefix (optional; for day-to-day prefer the `.deb`):
+Install into `/usr` (optional; for day-to-day prefer the `.deb`):
 
 ```bash
-ninja -C build install   # honor DESTDIR / --prefix from meson setup
+# Fresh setup uses prefix=/usr (meson.build default_options).
+meson setup build
+ninja -C build
+sudo ninja -C build install
+
+# Existing build dirs still on /usr/local need a reconfigure:
+meson configure build -Dprefix=/usr
+ninja -C build
+sudo ninja -C build install
 ```
+
+**Avoid `/usr/local`:** a plain `ninja install` on an old Meson tree used to land there and can shadow the packaged IBus component. Prefer `dpkg -i` for the session.
 
 Model weights are **not** built or installed by Meson. Use Preferences, or:
 
