@@ -4,7 +4,7 @@
 # https://github.com/roojs/sherpa-onnx/releases
 
 Name:           ibus-sherpa-onnx
-Version:        0.3.1
+Version:        0.3.2
 Release:        1%{?dist}
 Summary:        IBus speech dictation engine using sherpa-onnx
 License:        LGPLv3+

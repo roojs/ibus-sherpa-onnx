@@ -46,7 +46,7 @@ namespace IBSO.Setup
 				title: "Sherpa ONNX Preferences",
 				resizable: false,
 				default_width: 720,
-				default_height: 720
+				default_height: 600
 			);
 			this.config = Config.load();
 			this.download = new ModelDownload(this.models);
@@ -124,12 +124,13 @@ namespace IBSO.Setup
 			/* Non-homogeneous stack still leaves the old allocation; force a new default size. */
 			this.resizable = true;
 			if (name == "prefs") {
-				this.set_default_size(720, 720);
-			} else {
-				var nat = 0;
-				this.stack.measure(Gtk.Orientation.VERTICAL, 720, null, out nat, null, null);
-				this.set_default_size(720, int.max(nat + 52, 160));
+				this.set_default_size(720, 600);
+				this.resizable = false;
+				return;
 			}
+			var nat = 0;
+			this.stack.measure(Gtk.Orientation.VERTICAL, 720, null, out nat, null, null);
+			this.set_default_size(720, int.max(nat + 52, 160));
 			this.resizable = false;
 		}
 

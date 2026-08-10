@@ -1,8 +1,11 @@
-ibus-sherpa-onnx (0.3.1-1) unstable; urgency=medium
+ibus-sherpa-onnx (0.3.2-1) unstable; urgency=medium
 
-  * Preferences: seed `[general]` defaults when `settings.ini` is missing or has
-      no `general` group so setup works on a clean system (`has_key` no longer
-      throws `GROUP_NOT_FOUND`).
+  * Preferences Language combo: searchable substring filter (`expression` +
+      factories); closed value shows the selection; open list keeps a stable
+      width while searching.
+  * Chinese (`zh-CN`) label uses Mandarin endonym `普通话（简体）` with ICU gloss
+      for Mainland Simplified.
+  * Preferences window height 720×600 (less empty chrome).
 
 
  -- Alan Knowles <alan@roojs.com>  Mon, 10 Aug 2026 00:00:00 +0800

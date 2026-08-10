@@ -54,26 +54,68 @@ namespace IBSO.Setup
 			this.codes = new Gee.ArrayList<string>();
 			this.labels = new Gtk.StringList(null);
 			var ui = Intl.get_language_names()[0].replace("-", "_");
+			var width_chars = 1;
 			foreach (var code in models.languages.get_groups()) {
 				var tag = code;
 				if (models.languages.has_key(code, "display")) {
 					tag = models.languages.get_string(code, "display");
 				}
 				var loc = tag.replace("-", "_");
-				var native = Icu.display_name(loc, loc);
+				/* label= overrides ICU endonym when the locale tag undersells
+				 * spoken variety (普通话 vs “Chinese (Simplified)”). */
+				var native = models.languages.has_key(code, "label")
+					? models.languages.get_string(code, "label")
+					: Icu.display_name(loc, loc);
 				var gloss = Icu.display_name(loc, ui);
 				var label = native;
-				if (gloss != native) {
+				if (gloss != "" && gloss != native) {
 					label = "%s — %s".printf(native, gloss);
 				}
 				this.codes.add(code);
 				this.labels.append(label);
+				width_chars = int.max(width_chars, label.char_count());
 			}
+			/* Closed value: ellipsize in the narrow suffix. Open list: width_chars
+			 * floor so search does not shrink the popover. */
+			var selected_factory = new Gtk.SignalListItemFactory();
+			selected_factory.setup.connect((item) => {
+				((Gtk.ListItem) item).child = new Gtk.Label("") {
+					xalign = 0f,
+					valign = Gtk.Align.CENTER,
+					ellipsize = Pango.EllipsizeMode.END,
+					margin_start = 6,
+					margin_end = 6
+				};
+			});
+			selected_factory.bind.connect((item) => {
+				var list_item = (Gtk.ListItem) item;
+				((Gtk.Label) list_item.child).label =
+					((Gtk.StringObject) list_item.item).string;
+			});
+			var list_factory = new Gtk.SignalListItemFactory();
+			list_factory.setup.connect((item) => {
+				((Gtk.ListItem) item).child = new Gtk.Label("") {
+					xalign = 0f,
+					valign = Gtk.Align.CENTER,
+					width_chars = width_chars,
+					margin_start = 6,
+					margin_end = 6
+				};
+			});
+			list_factory.bind.connect((item) => {
+				var list_item = (Gtk.ListItem) item;
+				((Gtk.Label) list_item.child).label =
+					((Gtk.StringObject) list_item.item).string;
+			});
 			this.combo = new Adw.ComboRow() {
 				title = "Language",
 				subtitle = "Spoken language for dictation",
-				model = this.labels,
-				enable_search = true
+				enable_search = true,
+				search_match_mode = Gtk.StringFilterMatchMode.SUBSTRING,
+				expression = new Gtk.PropertyExpression(typeof(Gtk.StringObject), null, "string"),
+				factory = selected_factory,
+				list_factory = list_factory,
+				model = this.labels
 			};
 			this.row = this.combo;
 			this.combo.notify["selected"].connect(() => {
