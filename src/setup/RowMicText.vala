@@ -42,6 +42,12 @@ namespace IBSO.Setup
 		private bool trying = false;
 
 		/**
+		 * True between mic click and IBus activate finishing — ignore focus
+		 * leave while focus moves from the button onto the entry.
+		 */
+		private bool arming = false;
+
+		/**
 		 * @param prefs Preferences window (banner / status)
 		 * @param config Settings object
 		 * @param key String key under ''general''
@@ -73,41 +79,18 @@ namespace IBSO.Setup
 			this.record.clicked.connect(() => {
 				this.prefs.banner("");
 				this.trying = true;
+				this.arming = true;
 				this.entry.sensitive = true;
 				this.loading = true;
 				this.entry.text = "";
 				this.loading = false;
 				this.entry.grab_focus();
-				/* Focus must reach IBus before current_input_context updates. */
-				GLib.Timeout.add(50, () => {
-					var bus = new IBus.Bus();
-					if (!bus.is_connected()) {
-						this.trying = false;
-						this.fill();
-						this.entry.sensitive = false;
-						this.prefs.banner("IBus is not running");
-						return false;
-					}
-					var path = bus.current_input_context();
-					if (path == null || path == "") {
-						this.trying = false;
-						this.fill();
-						this.entry.sensitive = false;
-						this.prefs.banner(
-							"No input context — click the phrase field and try again");
-						return false;
-					}
-					try {
-						var ic = new IBus.InputContext(path, bus.get_connection());
-						ic.property_activate("listening", IBus.PropState.CHECKED);
-					} catch (GLib.Error err) {
-						this.trying = false;
-						this.fill();
-						this.entry.sensitive = false;
-						this.prefs.banner("Could not start listening");
-						return false;
-					}
-					this.prefs.banner("");
+				/*
+				 * Wait for the entry to become the IBus current input context.
+				 * Ignore focus leave while arming (button → entry).
+				 */
+				GLib.Timeout.add(200, () => {
+					this.start_listening();
 					return false;
 				});
 			});
@@ -116,14 +99,70 @@ namespace IBSO.Setup
 
 			var focus = new Gtk.EventControllerFocus();
 			focus.leave.connect(() => {
-				if (!this.trying) {
+				if (!this.trying || this.arming) {
 					return;
 				}
 				this.trying = false;
 				this.fill();
 				this.entry.sensitive = false;
+				this.prefs.banner("");
 			});
 			this.entry.add_controller(focus);
+		}
+
+		/**
+		 * After mic arming delay: focus checks, then IBus ''listening'' activate.
+		 */
+		private void start_listening()
+		{
+			this.arming = false;
+			if (!this.trying) {
+				return;
+			}
+			if (!this.entry.has_focus) {
+				this.trying = false;
+				this.fill();
+				this.entry.sensitive = false;
+				this.prefs.banner("Phrase field did not take focus");
+				return;
+			}
+			var bus = new IBus.Bus();
+			if (!bus.is_connected()) {
+				this.trying = false;
+				this.fill();
+				this.entry.sensitive = false;
+				this.prefs.banner("IBus is not running");
+				return;
+			}
+			var eng = bus.get_global_engine();
+			var eng_name = eng != null ? eng.get_name() : "";
+			if (eng_name != "sherpa-onnx" && !eng_name.has_prefix("sherpa-onnx-")) {
+				this.trying = false;
+				this.fill();
+				this.entry.sensitive = false;
+				this.prefs.banner("Active engine is “" + eng_name + "”, not Sherpa");
+				return;
+			}
+			var path = bus.current_input_context();
+			if (path == null || path == "") {
+				this.trying = false;
+				this.fill();
+				this.entry.sensitive = false;
+				this.prefs.banner("No IBus input context for this field");
+				return;
+			}
+			try {
+				var ic = new IBus.InputContext(path, bus.get_connection());
+				ic.property_activate("listening", IBus.PropState.CHECKED);
+			} catch (GLib.Error err) {
+				this.trying = false;
+				this.fill();
+				this.entry.sensitive = false;
+				this.prefs.banner("Could not start listening (" + err.message + ")");
+				return;
+			}
+			this.prefs.banner("Listening — speak the phrase");
+			GLib.debug("mic try-out: activated listening on %s (engine=%s)", path, eng_name);
 		}
 
 		public override void fill()
