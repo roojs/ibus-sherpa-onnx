@@ -69,6 +69,13 @@ namespace IBSO
 			} catch (GLib.Error err) {
 				GLib.debug("settings.ini: %s", err.message);
 			}
+			/* has_key() throws if the group is missing — seed [general] on clean install. */
+			if (!config.key_file.has_group("general")) {
+				config.key_file.set_string("general", "hotkey", "Ctrl+Shift+Space");
+				config.key_file.set_boolean("general", "notifications", false);
+				config.key_file.set_boolean("general", "preedit-animation", true);
+				config.key_file.set_string("general", "language", "en");
+			}
 			if (!config.key_file.has_key("general", "hotkey")) {
 				config.key_file.set_string("general", "hotkey", "Ctrl+Shift+Space");
 			}

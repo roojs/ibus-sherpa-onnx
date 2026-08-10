@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 - 2026-08-10
+
+- Preferences: seed `[general]` defaults when `settings.ini` is missing or has
+  no `general` group so setup works on a clean system (`has_key` no longer
+  throws `GROUP_NOT_FOUND`).
+
 ## 0.3.0 - 2026-08-08
 
 - Mic ASR: decode on a dedicated worker thread fed by `GLib.AsyncQueue` so

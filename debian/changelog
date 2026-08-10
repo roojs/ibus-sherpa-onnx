@@ -1,31 +1,8 @@
-ibus-sherpa-onnx (0.3.0-1) unstable; urgency=medium
+ibus-sherpa-onnx (0.3.1-1) unstable; urgency=medium
 
-  * Mic ASR: dedicated worker thread + AsyncQueue so appsink no longer drops
-    audio under inference load (removed drop=true).
-  * Drop WebRTC AGC (webrtcdsp); no longer depends on it for capture.
-  * Vala namespace IBus.SherpaOnnx renamed to IBSO.
-  * VAPI OnlineRecognizerResult.text normalizes NULL to empty string.
-
- -- Alan Knowles <alan@roojs.com>  Sat, 08 Aug 2026 13:30:00 +0800
-
-ibus-sherpa-onnx (0.2.0-1) unstable; urgency=medium
-
-  * Multilingual ASR: English-only Nemotron packs plus multilingual Nemotron 3.5
-      (560 / 1120 ms), selected from a GResource catalog (`languages.ini` /
-      `models.ini`).
-  * Preferences: searchable Language combo (ICU labels); Select model radios
-      filtered by language family; writes `general/language=`.
-  * Runtime: apply sherpa-onnx stream `language` for non-English locales.
-  * One IBus engine id per catalog language (for example sherpa-onnx,
-      sherpa-onnx-ja) so GNOME Settings groups the IME under that language; prefs
-      activates the matching engine on apply.
-  * Polkit install allowlist includes multilingual pack directory names.
-  * Mic capture: WebRTC AGC (webrtcdsp gain-control); depends on
-    gstreamer1.0-plugins-bad.
-  * Model download verifies via GitHub Releases API digest (no packaged
-    checksum sidecars).
-  * ASR language from engine id or prefs when bare sherpa-onnx.
-  * Preferences window widened for language combo labels.
+  * Preferences: seed `[general]` defaults when `settings.ini` is missing or has
+      no `general` group so setup works on a clean system (`has_key` no longer
+      throws `GROUP_NOT_FOUND`).
 
 
- -- Alan Knowles <alan@roojs.com>  Fri, 07 Aug 2026 00:00:00 +0800
+ -- Alan Knowles <alan@roojs.com>  Mon, 10 Aug 2026 00:00:00 +0800
