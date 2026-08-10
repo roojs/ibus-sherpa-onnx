@@ -1,10 +1,16 @@
 # ibus-sherpa-onnx
 
-Talk into your microphone; text appears in the app you are using. Works offline on Linux (IBus + sherpa-onnx / Nemotron).
+Talk into your microphone; text appears in the app you are using. Works offline on Linux (IBus + sherpa-onnx / Nemotron). **Multilingual:** English plus many other languages (Spanish, French, German, Japanese, Chinese, and more) via preferences.
 
 **Distro note:** These packages target **Ubuntu 25.04** (and similar). Older Ubuntu (e.g. 24.04) does not have the ONNX packages in the archive.
 
 ## Demo
+
+Dictation in action:
+
+<video src="https://github.com/user-attachments/assets/3db24932-0a0c-4d85-9209-0d7611687524" controls width="100%"></video>
+
+Install and first-time setup:
 
 <video src="https://github.com/user-attachments/assets/02104d53-0d63-4204-8baa-2e6bfe6a7c2f" controls width="100%"></video>
 
@@ -78,7 +84,7 @@ If either fails, go back to **Step 1** and make sure every package installed, th
 ibus-setup-sherpa-onnx
 ```
 
-A window opens. Pick a model and close the window.  
+A window opens. Choose a **language**, pick a model, and close the window.  
 It downloads about **440 MB**, may ask for your password, turns Sherpa on as your input method, and restarts IBus.
 
 ### Step 6 — Use it
