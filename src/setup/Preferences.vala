@@ -142,15 +142,21 @@ namespace IBSO.Setup
 			section.add(row.row);
 		}
 
-		/** Reload rows from disk; language combo follows a Sherpa IBus source if any. */
+		/** Reload rows from disk; language combo follows the active IBus engine. */
 		public void fill()
 		{
 			this.config = Config.load();
 
-			var id = this.sherpa_engine_from_gnome();
+			var id = "";
+			var bus = new IBus.Bus();
+			if (bus.is_connected()) {
+				var eng = bus.get_global_engine();
+				id = eng != null ? eng.get_name() : "";
+			}
 			if (id == "sherpa-onnx") {
 				this.config.key_file.set_string("general", "language", "en");
-			} else if (id.has_prefix("sherpa-onnx-")) {
+			}
+			if (id.has_prefix("sherpa-onnx-")) {
 				this.config.key_file.set_string("general", "language",
 					id.substring("sherpa-onnx-".length));
 			}
@@ -163,40 +169,6 @@ namespace IBSO.Setup
 				row.config = this.config;
 				row.fill();
 			}
-		}
-
-		/**
-		 * Sherpa engine id from GNOME input sources, if present.
-		 *
-		 * Avoids {@link IBus.Bus.get_global_engine}, which logs
-		 * ''No global engine'' on a clean session.
-		 */
-		private string sherpa_engine_from_gnome()
-		{
-			var schema = GLib.SettingsSchemaSource.get_default().lookup(
-				"org.gnome.desktop.input-sources", true);
-			if (schema == null) {
-				return "";
-			}
-			var settings = new GLib.Settings.full(schema, null, null);
-			string typ, name;
-			string fallback = "";
-			var i = 0;
-			var current = settings.get_uint("current");
-			var iter = settings.get_value("sources").iterator();
-			while (iter.next("(ss)", out typ, out name)) {
-				if (typ == "ibus" && (name == "sherpa-onnx"
-						|| name.has_prefix("sherpa-onnx-"))) {
-					if (i == current) {
-						return name;
-					}
-					if (fallback == "") {
-						fallback = name;
-					}
-				}
-				i++;
-			}
-			return fallback;
 		}
 
 		private bool on_close_request()

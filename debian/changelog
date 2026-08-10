@@ -3,8 +3,6 @@ ibus-sherpa-onnx (0.3.1-1) unstable; urgency=medium
   * Preferences: seed `[general]` defaults when `settings.ini` is missing or has
       no `general` group so setup works on a clean system (`has_key` no longer
       throws `GROUP_NOT_FOUND`).
-  * Preferences: derive language from GNOME input sources instead of
-      `get_global_engine()` (avoids `No global engine` warning on a clean session).
 
 
  -- Alan Knowles <alan@roojs.com>  Mon, 10 Aug 2026 00:00:00 +0800
