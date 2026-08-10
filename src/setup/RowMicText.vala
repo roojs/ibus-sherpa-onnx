@@ -47,6 +47,9 @@ namespace IBSO.Setup
 		 */
 		private bool arming = false;
 
+		/** IBus context path we activated, or null if not started. */
+		private string? listen_path = null;
+
 		/**
 		 * @param prefs Preferences window (banner / status)
 		 * @param config Settings object
@@ -80,6 +83,7 @@ namespace IBSO.Setup
 				this.prefs.banner("");
 				this.trying = true;
 				this.arming = true;
+				this.listen_path = null;
 				this.entry.sensitive = true;
 				this.loading = true;
 				this.entry.text = "";
@@ -89,7 +93,7 @@ namespace IBSO.Setup
 				 * Wait for the entry to become the IBus current input context.
 				 * Ignore focus leave while arming (button → entry).
 				 */
-				GLib.Timeout.add(200, () => {
+				GLib.Timeout.add(500, () => {
 					this.start_listening();
 					return false;
 				});
@@ -103,15 +107,36 @@ namespace IBSO.Setup
 					return;
 				}
 				this.trying = false;
-				this.fill();
-				this.entry.sensitive = false;
+				this.arming = false;
+				var path = this.listen_path;
+				this.listen_path = null;
+				if (path != null && path != "") {
+					try {
+						var bus = new IBus.Bus();
+						if (bus.is_connected()) {
+							var ic = new IBus.InputContext(path, bus.get_connection());
+							ic.property_activate("listening", IBus.PropState.UNCHECKED);
+						}
+					} catch (GLib.Error err) {
+						GLib.debug("mic try-out stop: %s", err.message);
+					}
+				}
 				this.prefs.banner("");
+				/*
+				 * sensitive=false must not run during focus-leave — GtkText
+				 * warns it missed focus-out (cursor blink cleanup).
+				 */
+				GLib.Idle.add(() => {
+					this.fill();
+					this.entry.sensitive = false;
+					return false;
+				});
 			});
 			this.entry.add_controller(focus);
 		}
 
 		/**
-		 * After mic arming delay: focus checks, then IBus ''listening'' activate.
+		 * After mic arming delay: IBus checks, then ''listening'' activate.
 		 */
 		private void start_listening()
 		{
@@ -119,50 +144,57 @@ namespace IBSO.Setup
 			if (!this.trying) {
 				return;
 			}
-			if (!this.entry.has_focus) {
-				this.trying = false;
-				this.fill();
-				this.entry.sensitive = false;
-				this.prefs.banner("Phrase field did not take focus");
-				return;
-			}
 			var bus = new IBus.Bus();
 			if (!bus.is_connected()) {
 				this.trying = false;
-				this.fill();
-				this.entry.sensitive = false;
 				this.prefs.banner("IBus is not running");
+				GLib.Idle.add(() => {
+					this.fill();
+					this.entry.sensitive = false;
+					return false;
+				});
 				return;
 			}
 			var eng = bus.get_global_engine();
 			var eng_name = eng != null ? eng.get_name() : "";
 			if (eng_name != "sherpa-onnx" && !eng_name.has_prefix("sherpa-onnx-")) {
 				this.trying = false;
-				this.fill();
-				this.entry.sensitive = false;
 				this.prefs.banner("Active engine is “" + eng_name + "”, not Sherpa");
+				GLib.Idle.add(() => {
+					this.fill();
+					this.entry.sensitive = false;
+					return false;
+				});
 				return;
 			}
 			var path = bus.current_input_context();
 			if (path == null || path == "") {
 				this.trying = false;
-				this.fill();
-				this.entry.sensitive = false;
 				this.prefs.banner("No IBus input context for this field");
+				GLib.Idle.add(() => {
+					this.fill();
+					this.entry.sensitive = false;
+					return false;
+				});
 				return;
 			}
 			try {
 				var ic = new IBus.InputContext(path, bus.get_connection());
+				GLib.debug("calling listening activate key=%s engine=%s ic=%s entry_is_focus=%s entry_has_focus=%s",
+					this.key, eng_name, path, this.entry.is_focus().to_string(), this.entry.has_focus.to_string());
 				ic.property_activate("listening", IBus.PropState.CHECKED);
+				this.listen_path = path;
+				GLib.debug("listening activate returned ok ic=%s", path);
 			} catch (GLib.Error err) {
 				this.trying = false;
-				this.fill();
-				this.entry.sensitive = false;
 				this.prefs.banner("Could not start listening (" + err.message + ")");
+				GLib.Idle.add(() => {
+					this.fill();
+					this.entry.sensitive = false;
+					return false;
+				});
 				return;
 			}
-			this.prefs.banner("Listening — speak the phrase");
-			GLib.debug("mic try-out: activated listening on %s (engine=%s)", path, eng_name);
 		}
 
 		public override void fill()

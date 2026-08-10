@@ -193,6 +193,9 @@ namespace IBSO
 				return;
 			}
 			var on = this.transcriber == null || !this.transcriber.listening;
+			GLib.debug("listening activate turn_on=%s prop_state=%u has_focus=%s enabled=%s path=%s engine=%s",
+				on.to_string(), prop_state, this.has_focus.to_string(), this.enabled.to_string(),
+				this.object_path ?? "", this.engine_name ?? "");
 			this.update_listening(on, true);
 		}
 

@@ -123,6 +123,8 @@ if get_option('cli')
       'src/Transcriber.vala',
       'src/EngineStub.vala',
       'src/Config.vala',
+      'src/Models.vala',
+      catalog_resources,
     ],
     dependencies: [
       glib_dep,
@@ -131,6 +133,7 @@ if get_option('cli')
       gst_dep,
       gst_app_dep,
       sherpa_dep,
+      ibus_dep,
       m_dep,
     ],
     vala_args: [
@@ -218,6 +221,8 @@ if get_option('gtk_demo')
       'src/Transcriber.vala',
       'src/EngineStub.vala',
       'src/Config.vala',
+      'src/Models.vala',
+      catalog_resources,
     ],
     dependencies: [
       glib_dep,
@@ -228,6 +233,7 @@ if get_option('gtk_demo')
       sherpa_dep,
       gtk_dep,
       adw_dep,
+      ibus_dep,
       m_dep,
     ],
     vala_args: [
