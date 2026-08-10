@@ -5,6 +5,8 @@
 - Preferences: seed `[general]` defaults when `settings.ini` is missing or has
   no `general` group so setup works on a clean system (`has_key` no longer
   throws `GROUP_NOT_FOUND`).
+- Preferences: derive language from GNOME input sources instead of
+  `get_global_engine()` (avoids `No global engine` warning on a clean session).
 
 ## 0.3.0 - 2026-08-08
 
