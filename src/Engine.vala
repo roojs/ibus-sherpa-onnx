@@ -83,7 +83,10 @@ namespace IBSO
 		public override void enable()
 		{
 			base.enable();
-			this.debug_lifecycle("enable");
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("enable: listening=%s has_focus=%s enabled=%s engine=%s",
+				listening.to_string(), this.has_focus.to_string(), this.enabled.to_string(),
+				this.engine_name ?? "");
 			this.ensure_transcriber();
 			this.register_properties(this.props);
 			this.update_ui();
@@ -92,7 +95,10 @@ namespace IBSO
 		public override void focus_in()
 		{
 			base.focus_in();
-			this.debug_lifecycle("focus_in");
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("focus_in: listening=%s has_focus=%s enabled=%s engine=%s",
+				listening.to_string(), this.has_focus.to_string(), this.enabled.to_string(),
+				this.engine_name ?? "");
 			Engine.config = Config.load();
 			Engine.bind_hotkey();
 			this.ensure_transcriber();
@@ -100,7 +106,10 @@ namespace IBSO
 
 		public override void focus_out()
 		{
-			this.debug_lifecycle("focus_out");
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("focus_out: listening=%s has_focus=%s enabled=%s engine=%s",
+				listening.to_string(), this.has_focus.to_string(), this.enabled.to_string(),
+				this.engine_name ?? "");
 			base.focus_out();
 		}
 
@@ -110,72 +119,42 @@ namespace IBSO
 		 */
 		public override void focus_in_id(string object_path, string client)
 		{
-			this.debug_lifecycle("focus_in_id",
-				"path=%s client=%s".printf(object_path, client));
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("focus_in_id: listening=%s path=%s client=%s engine=%s",
+				listening.to_string(), object_path, client, this.engine_name ?? "");
 			base.focus_in_id(object_path, client);
 		}
 
 		public override void focus_out_id(string object_path)
 		{
-			this.debug_lifecycle("focus_out_id", "path=%s".printf(object_path));
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("focus_out_id: listening=%s path=%s engine=%s",
+				listening.to_string(), object_path, this.engine_name ?? "");
 			base.focus_out_id(object_path);
 		}
 
 		public override void set_content_type(uint purpose, uint hints)
 		{
-			this.debug_lifecycle("set_content_type",
-				"purpose=%u(%s) hints=%u".printf(purpose,
-					((IBus.InputPurpose) purpose).to_string(), hints));
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("set_content_type: listening=%s purpose=%u(%s) hints=%u engine=%s",
+				listening.to_string(), purpose, ((IBus.InputPurpose) purpose).to_string(),
+				hints, this.engine_name ?? "");
 			base.set_content_type(purpose, hints);
 		}
 
 		/**
-		 * Client reset (e.g. Gtk.IMContext.reset on submit): stop listening if on.
-		 * Most apps never call this; cooperating apps can.
+		 * Client reset (composition clear / focus churn): stop listening if on.
 		 */
 		public override void reset()
 		{
-			this.debug_lifecycle("reset");
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("reset: listening=%s has_focus=%s enabled=%s engine=%s",
+				listening.to_string(), this.has_focus.to_string(), this.enabled.to_string(),
+				this.engine_name ?? "");
 			if (this.transcriber != null && this.transcriber.listening) {
 				this.update_listening(false, false);
 			}
 			base.reset();
-		}
-
-		/**
-		 * 0.6 Phase A0: one-line lifecycle dump for focus / reset investigation.
-		 *
-		 * @param event callback name (''focus_in'', ''reset'', …)
-		 * @param extra optional extra fields (client path, purpose, …)
-		 */
-		private void debug_lifecycle(string event, string extra = "")
-		{
-			var listening = this.transcriber != null && this.transcriber.listening;
-			uint purpose = 0;
-			uint hints = 0;
-			this.get_content_type(out purpose, out hints);
-			if (extra == "") {
-				GLib.debug("%s: listening=%s has_focus=%s enabled=%s purpose=%u(%s) hints=%u engine=%s",
-					event,
-					listening.to_string(),
-					this.has_focus.to_string(),
-					this.enabled.to_string(),
-					purpose,
-					((IBus.InputPurpose) purpose).to_string(),
-					hints,
-					this.engine_name ?? "");
-				return;
-			}
-			GLib.debug("%s: listening=%s has_focus=%s enabled=%s purpose=%u(%s) hints=%u engine=%s %s",
-				event,
-				listening.to_string(),
-				this.has_focus.to_string(),
-				this.enabled.to_string(),
-				purpose,
-				((IBus.InputPurpose) purpose).to_string(),
-				hints,
-				this.engine_name ?? "",
-				extra);
 		}
 
 		/**
@@ -273,7 +252,10 @@ namespace IBSO
 
 		public override void disable()
 		{
-			this.debug_lifecycle("disable");
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("disable: listening=%s has_focus=%s enabled=%s engine=%s",
+				listening.to_string(), this.has_focus.to_string(), this.enabled.to_string(),
+				this.engine_name ?? "");
 			if (this.transcriber != null && this.transcriber.listening) {
 				this.update_listening(false, false);
 				return;

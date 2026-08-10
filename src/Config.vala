@@ -93,6 +93,24 @@ namespace IBSO
 				config.key_file.set_string("general", "language", "en");
 			}
 
+			var id = GLib.Environment.get_os_info(GLib.OsInfoKey.ID);
+			var voice_prefix = "okay linux";
+			if (id != null && id != "" && id != "linux") {
+				voice_prefix = "okay " + id;
+			}
+			if (!config.key_file.has_key("general", "voice-paragraph")) {
+				config.key_file.set_string("general", "voice-paragraph",
+					voice_prefix + " paragraph");
+			}
+			if (!config.key_file.has_key("general", "voice-line-break")) {
+				config.key_file.set_string("general", "voice-line-break",
+					voice_prefix + " line break");
+			}
+			if (!config.key_file.has_key("general", "voice-stop")) {
+				config.key_file.set_string("general", "voice-stop",
+					voice_prefix + " stop");
+			}
+
 			try {
 				if (GLib.FileUtils.test(config.packs_path, GLib.FileTest.IS_REGULAR)) {
 					config.packs.load_from_file(config.packs_path, GLib.KeyFileFlags.NONE);

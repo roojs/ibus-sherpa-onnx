@@ -1,22 +1,11 @@
 /*
  * Copyright (C) 2026 Alan Knowles <alan@roojs.com>
  *
- * UTF-8 wrappers over ICU uloc (thin pkg stub: icu-uc.vapi).
+ * UTF-8 wrappers over ICU uloc (C decls in icu-uc.vapi).
  */
 
 namespace Icu
 {
-	[CCode (cname = "U_FAILURE", cheader_filename = "unicode/utypes.h")]
-	private static extern bool failure(int code);
-
-	[CCode (cname = "uloc_getDisplayName", cheader_filename = "unicode/uloc.h")]
-	private static extern int32 get_display_name_u(
-		string locale_id,
-		string? in_locale_id,
-		[CCode (array_length = false)] uint16[] result,
-		int32 max_result_size,
-		ref int err);
-
 	/**
 	 * Locale display name as UTF-8 (''locale_id'' shown in ''in_locale_id'').
 	 *

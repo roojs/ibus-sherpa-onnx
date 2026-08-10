@@ -14,6 +14,7 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  meson
 BuildRequires:  ninja-build
 BuildRequires:  gcc
+BuildRequires:  gcc-c++
 BuildRequires:  pkgconf-pkg-config
 BuildRequires:  vala
 BuildRequires:  glib2-devel
@@ -27,6 +28,7 @@ BuildRequires:  json-glib-devel
 BuildRequires:  libarchive-devel
 BuildRequires:  libicu-devel
 BuildRequires:  libgee-devel
+BuildRequires:  rapidfuzz-devel
 BuildRequires:  libsherpa-onnx-c-api-devel
 BuildRequires:  chrpath
 
