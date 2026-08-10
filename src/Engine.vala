@@ -360,7 +360,7 @@ namespace IBSO
 			this.transcriber = null;
 			try {
 				GLib.debug("Loading model pack %s (%s): %s", pack, this.language, model_dir);
-				var t = new Transcriber(this) {
+				var t = new Transcriber(this, Engine.config) {
 					model_dir = model_dir,
 					pack = pack
 				};

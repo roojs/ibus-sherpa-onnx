@@ -86,7 +86,7 @@ int main(string[] args)
 	};
 	IBSO.Transcriber transcriber;
 	try {
-		transcriber = new IBSO.Transcriber(engine) {
+		transcriber = new IBSO.Transcriber(engine, IBSO.Config.load()) {
 			model_dir = model_dir
 		};
 		transcriber.load();

@@ -34,7 +34,7 @@ int main(string[] args)
 		var engine = new IBSO.Engine();
 		IBSO.Transcriber transcriber;
 		try {
-			transcriber = new IBSO.Transcriber(engine) {
+			transcriber = new IBSO.Transcriber(engine, IBSO.Config.load()) {
 				model_dir = model_dir
 			};
 			transcriber.load();

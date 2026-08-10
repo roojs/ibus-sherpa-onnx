@@ -101,6 +101,7 @@ if get_option('cli')
       'src/cli/main.vala',
       'src/Transcriber.vala',
       'src/EngineStub.vala',
+      'src/Config.vala',
     ],
     dependencies: [
       glib_dep,
@@ -194,6 +195,7 @@ if get_option('gtk_demo')
       'src/gtk/ScrolledView.vala',
       'src/Transcriber.vala',
       'src/EngineStub.vala',
+      'src/Config.vala',
     ],
     dependencies: [
       glib_dep,

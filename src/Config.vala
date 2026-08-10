@@ -74,6 +74,7 @@ namespace IBSO
 				config.key_file.set_string("general", "hotkey", "Ctrl+Shift+Space");
 				config.key_file.set_boolean("general", "notifications", false);
 				config.key_file.set_boolean("general", "preedit-animation", true);
+				config.key_file.set_boolean("general", "mute-speakers", true);
 				config.key_file.set_string("general", "language", "en");
 			}
 			if (!config.key_file.has_key("general", "hotkey")) {
@@ -84,6 +85,9 @@ namespace IBSO
 			}
 			if (!config.key_file.has_key("general", "preedit-animation")) {
 				config.key_file.set_boolean("general", "preedit-animation", true);
+			}
+			if (!config.key_file.has_key("general", "mute-speakers")) {
+				config.key_file.set_boolean("general", "mute-speakers", true);
 			}
 			if (!config.key_file.has_key("general", "language")) {
 				config.key_file.set_string("general", "language", "en");

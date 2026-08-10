@@ -46,7 +46,7 @@ namespace IBSO.Setup
 				title: "Sherpa ONNX Preferences",
 				resizable: false,
 				default_width: 720,
-				default_height: 600
+				default_height: 720
 			);
 			this.config = Config.load();
 			this.download = new ModelDownload(this.models);
@@ -60,6 +60,8 @@ namespace IBSO.Setup
 				"Desktop notifications", "Notify when listening starts or stops"), listening);
 			this.add("preedit-animation", new RowSwitch(this.config, "preedit-animation",
 				"Preedit listening animation", "Show . .. ... while waiting for speech"), listening);
+			this.add("mute-speakers", new RowSwitch(this.config, "mute-speakers",
+				"Mute speakers while listening", "Silence system audio output during dictation"), listening);
 
 			var models = new Adw.PreferencesGroup() {
 				title = "Select model",
@@ -124,7 +126,7 @@ namespace IBSO.Setup
 			/* Non-homogeneous stack still leaves the old allocation; force a new default size. */
 			this.resizable = true;
 			if (name == "prefs") {
-				this.set_default_size(720, 600);
+				this.set_default_size(720, 720);
 				this.resizable = false;
 				return;
 			}

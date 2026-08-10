@@ -72,6 +72,9 @@ namespace IBSO
 		/** Stream ''language'' option; empty skips ''set_option'' (English-only packs). */
 		private string stream_language = "";
 
+		/** True while we muted the default sink for this listen session. */
+		private bool output_mute_held = false;
+
 		/** Directory with int8 ONNX + tokens.txt (set before {@link load}). */
 		public string model_dir { get; set; default = ""; }
 
@@ -80,6 +83,9 @@ namespace IBSO
 
 		/** Catalog language code; English codes skip stream option. */
 		public string language { get; set; default = ""; }
+
+		/** Prefs (''mute-speakers'', …); set at construct. */
+		public Config config { get; construct; }
 
 		/** Owning engine (IBus or CLI/GTK stub). */
 		public unowned Engine engine { get; construct; }
@@ -118,11 +124,13 @@ namespace IBSO
 
 		/**
 		 * @param engine owning engine (IBus or stub)
+		 * @param config settings (already loaded)
 		 */
-		public Transcriber(Engine engine)
+		public Transcriber(Engine engine, Config config)
 		{
 			GLib.Object(
-				engine: engine
+				engine: engine,
+				config: config
 			);
 			this.language = engine.language;
 		}
@@ -347,6 +355,9 @@ namespace IBSO
 			this.audio_queue.push(new PcmChunk.for_reset());
 			this.last_text = "";
 			this.listening = true;
+			if (this.config.key_file.get_boolean("general", "mute-speakers")) {
+				this.output_mute(true);
+			}
 			this.pipeline.set_state(Gst.State.PLAYING);
 		}
 
@@ -358,9 +369,37 @@ namespace IBSO
 			}
 			this.listening = false;
 			this.pipeline.set_state(Gst.State.NULL);
+			this.output_mute(false);
 			this.audio_queue = new GLib.AsyncQueue<PcmChunk>();
 			this.audio_queue.push(new PcmChunk.for_reset());
 			this.last_text = "";
+		}
+
+		/**
+		 * Mute or restore the default Pulse/PipeWire sink for this listen session.
+		 * Unmute only if we muted earlier ({@link output_mute_held}).
+		 *
+		 * 💩 ''pactl'' spawn — nasty; revisit (libpulse or similar). Our GStreamer
+		 * pipeline is capture-only and cannot silence system playback.
+		 */
+		private void output_mute(bool mute)
+		{
+			if (mute == this.output_mute_held) {
+				return;
+			}
+			try {
+				int status;
+				Process.spawn_command_line_sync(
+					"pactl set-sink-mute @DEFAULT_SINK@ %d".printf(mute ? 1 : 0),
+					null, null, out status);
+				if (status != 0) {
+					return;
+				}
+			} catch (GLib.Error err) {
+				GLib.debug("mute: %s", err.message);
+				return;
+			}
+			this.output_mute_held = mute;
 		}
 	}
 }
