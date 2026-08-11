@@ -21,8 +21,10 @@ namespace IBSO.Setup
 	/**
 	 * Phrase row: label on the left, {@link Gtk.Entry} + mic on the right.
 	 * Entry stays insensitive until the mic is pressed; failures show on
-	 * {@link Preferences} banner. Try-out text is not saved; the phrase is
-	 * restored on focus leave. Bound to a KeyFile string under ''general''.
+	 * {@link Preferences} banner. Bound to a KeyFile string under ''general''.
+	 *
+	 * Mic starts listening (AT-SPI toggle hotkey). Leaving the entry while
+	 * listening (including mic click): short wait, then save and lock.
 	 *
 	 * == Example ==
 	 *
@@ -34,21 +36,22 @@ namespace IBSO.Setup
 	 */
 	public class RowMicText : Row
 	{
+		/** Mic / listening state for this phrase field. */
+		private enum Mic
+		{
+			/** Entry insensitive, saved phrase shown. */
+			IDLE,
+			/** Mic clicked; waiting for focus + hotkey. */
+			ARMING,
+			/** Listening. */
+			LISTENING
+		}
+
 		public Gtk.Entry entry;
 		public Gtk.Button record;
 		public Preferences prefs;
 
-		/** True while a mic try-out is in progress (do not save spoken text). */
-		private bool trying = false;
-
-		/**
-		 * True between mic click and IBus activate finishing — ignore focus
-		 * leave while focus moves from the button onto the entry.
-		 */
-		private bool arming = false;
-
-		/** IBus context path we activated, or null if not started. */
-		private string? listen_path = null;
+		private Mic mic = Mic.IDLE;
 
 		/**
 		 * @param prefs Preferences window (banner / status)
@@ -68,7 +71,7 @@ namespace IBSO.Setup
 				hexpand = false
 			};
 			this.entry.changed.connect(() => {
-				if (this.loading || this.trying) {
+				if (this.loading || this.mic != Mic.IDLE) {
 					return;
 				}
 				this.config.key_file.set_string("general", this.key, this.entry.text);
@@ -76,25 +79,31 @@ namespace IBSO.Setup
 			});
 			this.record = new Gtk.Button.from_icon_name("audio-input-microphone-symbolic") {
 				valign = Gtk.Align.CENTER,
-				tooltip_text = "Clear, focus, and toggle listening"
+				tooltip_text = "Dictate your preferred command"
 			};
 			this.record.add_css_class("flat");
 			this.record.clicked.connect(() => {
+				GLib.debug("key=%s mic=%s", this.key, this.mic.to_string());
+				if (this.mic != Mic.IDLE) {
+					return;
+				}
 				this.prefs.banner("");
-				this.trying = true;
-				this.arming = true;
-				this.listen_path = null;
+				/* ---- START ---- */
+				uint keyval;
+				IBus.ModifierType mods;
+				if (!this.config.hotkey(out keyval, out mods)) {
+					this.prefs.banner("Set a valid toggle hotkey under General first");
+					return;
+				}
+				this.mic = Mic.ARMING;
 				this.entry.sensitive = true;
 				this.loading = true;
 				this.entry.text = "";
 				this.loading = false;
 				this.entry.grab_focus();
-				/*
-				 * Wait for the entry to become the IBus current input context.
-				 * Ignore focus leave while arming (button → entry).
-				 */
+				/* Delay so the entry owns focus before we send the hotkey. */
 				GLib.Timeout.add(500, () => {
-					this.start_listening();
+					this.start_listening(keyval, mods);
 					return false;
 				});
 			});
@@ -103,32 +112,17 @@ namespace IBSO.Setup
 
 			var focus = new Gtk.EventControllerFocus();
 			focus.leave.connect(() => {
-				if (!this.trying || this.arming) {
+				GLib.debug("key=%s mic=%s", this.key, this.mic.to_string());
+				/* ---- STOP (left entry while listening, e.g. mic click) ---- */
+				if (this.mic != Mic.LISTENING) {
 					return;
 				}
-				this.trying = false;
-				this.arming = false;
-				var path = this.listen_path;
-				this.listen_path = null;
-				if (path != null && path != "") {
-					try {
-						var bus = new IBus.Bus();
-						if (bus.is_connected()) {
-							var ic = new IBus.InputContext(path, bus.get_connection());
-							ic.property_activate("listening", IBus.PropState.UNCHECKED);
-						}
-					} catch (GLib.Error err) {
-						GLib.debug("mic try-out stop: %s", err.message);
-					}
-				}
-				this.prefs.banner("");
-				/*
-				 * sensitive=false must not run during focus-leave — GtkText
-				 * warns it missed focus-out (cursor blink cleanup).
-				 */
-				GLib.Idle.add(() => {
-					this.fill();
+				GLib.Timeout.add(300, () => {
+					this.mic = Mic.IDLE;
+					this.config.key_file.set_string("general", this.key, this.entry.text);
+					this.config.save();
 					this.entry.sensitive = false;
+					GLib.debug("key=%s mic=%s", this.key, this.mic.to_string());
 					return false;
 				});
 			});
@@ -136,17 +130,17 @@ namespace IBSO.Setup
 		}
 
 		/**
-		 * After mic arming delay: IBus checks, then ''listening'' activate.
+		 * After mic arming delay: IBus checks, then send the toggle hotkey.
 		 */
-		private void start_listening()
+		private void start_listening(uint keyval, IBus.ModifierType mods)
 		{
-			this.arming = false;
-			if (!this.trying) {
+			if (this.mic != Mic.ARMING) {
 				return;
 			}
+			this.entry.grab_focus();
 			var bus = new IBus.Bus();
 			if (!bus.is_connected()) {
-				this.trying = false;
+				this.mic = Mic.IDLE;
 				this.prefs.banner("IBus is not running");
 				GLib.Idle.add(() => {
 					this.fill();
@@ -158,7 +152,7 @@ namespace IBSO.Setup
 			var eng = bus.get_global_engine();
 			var eng_name = eng != null ? eng.get_name() : "";
 			if (eng_name != "sherpa-onnx" && !eng_name.has_prefix("sherpa-onnx-")) {
-				this.trying = false;
+				this.mic = Mic.IDLE;
 				this.prefs.banner("Active engine is “" + eng_name + "”, not Sherpa");
 				GLib.Idle.add(() => {
 					this.fill();
@@ -167,10 +161,9 @@ namespace IBSO.Setup
 				});
 				return;
 			}
-			var path = bus.current_input_context();
-			if (path == null || path == "") {
-				this.trying = false;
-				this.prefs.banner("No IBus input context for this field");
+			if (!this.toggle_hotkey(keyval, mods)) {
+				this.mic = Mic.IDLE;
+				this.prefs.banner("Could not send the toggle hotkey");
 				GLib.Idle.add(() => {
 					this.fill();
 					this.entry.sensitive = false;
@@ -178,23 +171,50 @@ namespace IBSO.Setup
 				});
 				return;
 			}
+			this.mic = Mic.LISTENING;
+			GLib.debug("key=%s mic=%s", this.key, this.mic.to_string());
+		}
+
+		/**
+		 * Send ''keyval''+''mods'' via AT-SPI (LOCKMODIFIERS + SYM).
+		 *
+		 * @return false if AT-SPI failed
+		 */
+		private bool toggle_hotkey(uint keyval, IBus.ModifierType mods)
+		{
+			if (!Atspi.is_initialized()) {
+				Atspi.init();
+			}
+			long lock = 0;
+			if ((mods & IBus.ModifierType.SHIFT_MASK) != 0) {
+				lock |= (1 << Atspi.ModifierType.SHIFT);
+			}
+			if ((mods & IBus.ModifierType.CONTROL_MASK) != 0) {
+				lock |= (1 << Atspi.ModifierType.CONTROL);
+			}
+			if ((mods & IBus.ModifierType.MOD1_MASK) != 0) {
+				lock |= (1 << Atspi.ModifierType.ALT);
+			}
+			if ((mods & IBus.ModifierType.SUPER_MASK) != 0
+					|| (mods & IBus.ModifierType.META_MASK) != 0
+					|| (mods & IBus.ModifierType.HYPER_MASK) != 0) {
+				lock |= (1 << Atspi.ModifierType.META);
+			}
+			GLib.debug("keyval=0x%x ibus_mods=0x%x atspi_lock=0x%lx",
+				keyval, (uint) mods, lock);
 			try {
-				var ic = new IBus.InputContext(path, bus.get_connection());
-				GLib.debug("calling listening activate key=%s engine=%s ic=%s entry_is_focus=%s entry_has_focus=%s",
-					this.key, eng_name, path, this.entry.is_focus().to_string(), this.entry.has_focus.to_string());
-				ic.property_activate("listening", IBus.PropState.CHECKED);
-				this.listen_path = path;
-				GLib.debug("listening activate returned ok ic=%s", path);
+				if (lock != 0) {
+					Atspi.generate_keyboard_event(lock, null, Atspi.KeySynthType.LOCKMODIFIERS);
+				}
+				Atspi.generate_keyboard_event((long) keyval, null, Atspi.KeySynthType.SYM);
+				if (lock != 0) {
+					Atspi.generate_keyboard_event(lock, null, Atspi.KeySynthType.UNLOCKMODIFIERS);
+				}
 			} catch (GLib.Error err) {
-				this.trying = false;
-				this.prefs.banner("Could not start listening (" + err.message + ")");
-				GLib.Idle.add(() => {
-					this.fill();
-					this.entry.sensitive = false;
-					return false;
-				});
-				return;
+				GLib.debug("%s", err.message);
+				return false;
 			}
+			return true;
 		}
 
 		public override void fill()

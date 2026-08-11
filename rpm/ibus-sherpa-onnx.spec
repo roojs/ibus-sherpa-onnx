@@ -28,6 +28,7 @@ BuildRequires:  json-glib-devel
 BuildRequires:  libarchive-devel
 BuildRequires:  libicu-devel
 BuildRequires:  libgee-devel
+BuildRequires:  at-spi2-core-devel
 BuildRequires:  rapidfuzz-devel
 BuildRequires:  libsherpa-onnx-c-api-devel
 BuildRequires:  chrpath

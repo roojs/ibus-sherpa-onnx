@@ -153,12 +153,14 @@ archive_dep = dependency('libarchive')
 # does not pull -licuuc into the shared link line under --as-needed.
 icu_dep = dependency('icu-uc')
 gee_dep = dependency('gee-0.8')
+atspi_dep = dependency('atspi-2')
 
 # IBus Preferences / component <setup> (RooTerm Dialog naming: Preferences, Row*).
 executable(
   'ibus-setup-sherpa-onnx',
   [
     'src/setup/main.vala',
+    'src/setup/Application.vala',
     'src/Config.vala',
     'src/Models.vala',
     'src/vapi/Icu.vala',
@@ -184,6 +186,7 @@ executable(
     icu_dep,
     gee_dep,
     ibus_dep,
+    atspi_dep,
     m_dep,
   ],
   install: true,

@@ -146,6 +146,41 @@ namespace IBSO
 		}
 
 		/**
+		 * Parse ''general/hotkey'' into keyval + mods (same rules as the engine).
+		 * No silent default — returns false if missing or unparsable.
+		 */
+		public bool hotkey(out uint keyval, out IBus.ModifierType mods)
+		{
+			keyval = 0;
+			mods = (IBus.ModifierType) 0;
+			string hotkey;
+			try {
+				hotkey = this.key_file.get_string("general", "hotkey");
+			} catch (GLib.KeyFileError err) {
+				return false;
+			}
+			if (hotkey == "") {
+				return false;
+			}
+			IBus.accelerator_parse(hotkey, out keyval, out mods);
+			if (keyval == 0) {
+				var normalized = hotkey.replace("Ctrl+", "Control+").replace("ctrl+", "Control+");
+				var plus = normalized.last_index_of_char('+');
+				if (plus >= 0) {
+					normalized = normalized.substring(0, plus + 1) + normalized.substring(plus + 1).down();
+				}
+				var kv = (uint) 0;
+				var md = (uint) 0;
+				if (!IBus.key_event_from_string(normalized, out kv, out md)) {
+					return false;
+				}
+				keyval = kv;
+				mods = (IBus.ModifierType) md;
+			}
+			return keyval != 0;
+		}
+
+		/**
 		 * One-shot: flatten legacy group layouts into ''[packs] lang=id''; if
 		 * the active language has no entry, seed it from the ''model'' symlink.
 		 *

@@ -107,10 +107,24 @@ namespace IBSO
 		public override void focus_out()
 		{
 			var listening = this.transcriber != null && this.transcriber.listening;
-			GLib.debug("focus_out: listening=%s has_focus=%s enabled=%s engine=%s",
-				listening.to_string(), this.has_focus.to_string(), this.enabled.to_string(),
-				this.engine_name ?? "");
+			GLib.debug("focus_out: listening=%s saw_partial=%s has_focus=%s enabled=%s engine=%s",
+				listening.to_string(), this.saw_partial.to_string(), this.has_focus.to_string(),
+				this.enabled.to_string(), this.engine_name ?? "");
+			/*
+			 * Spoken drafts use {@link IBus.PreeditFocusMode.COMMIT} — IBus
+			 * turns that buffer into real text on focus loss. Do not
+			 * commit_text again here (would double). Restart dots if still on.
+			 */
+			var had_partial = this.saw_partial;
 			base.focus_out();
+			if (!listening || !had_partial) {
+				return;
+			}
+			this.saw_partial = false;
+			this.stop_preedit_animation();
+			if (this.transcriber.listening) {
+				this.start_preedit_animation();
+			}
 		}
 
 		/**
@@ -162,29 +176,19 @@ namespace IBSO
 		 */
 		public static void bind_hotkey()
 		{
-			var hotkey = Engine.config.key_file.get_string("general", "hotkey");
-			var keyval = (uint) 0;
-			var accel_mods = (IBus.ModifierType) 0;
-			IBus.accelerator_parse(hotkey, out keyval, out accel_mods);
-			if (keyval == 0) {
-				var normalized = hotkey.replace("Ctrl+", "Control+").replace("ctrl+", "Control+");
-				var plus = normalized.last_index_of_char('+');
-				if (plus >= 0) {
-					normalized = normalized.substring(0, plus + 1) + normalized.substring(plus + 1).down();
+			uint keyval;
+			IBus.ModifierType mods;
+			if (!Engine.config.hotkey(out keyval, out mods)) {
+				var hotkey = "";
+				try {
+					hotkey = Engine.config.key_file.get_string("general", "hotkey");
+				} catch (GLib.KeyFileError err) {
 				}
-				var kv = (uint) 0;
-				var md = (uint) 0;
-				if (IBus.key_event_from_string(normalized, out kv, out md)) {
-					keyval = kv;
-					accel_mods = (IBus.ModifierType) md;
-				}
-			}
-			if (keyval == 0) {
-				IBus.accelerator_parse("<Control><Shift>space", out keyval, out accel_mods);
+				IBus.accelerator_parse("<Control><Shift>space", out keyval, out mods);
 				GLib.warning("Could not parse hotkey '%s'; using Control+Shift+space", hotkey);
 			}
 			Engine.toggle_keyval = keyval;
-			Engine.toggle_mods = (uint) accel_mods;
+			Engine.toggle_mods = (uint) mods;
 		}
 
 		public override void property_activate(string prop_name, uint prop_state)
@@ -374,7 +378,9 @@ namespace IBSO
 			}
 			this.saw_partial = true;
 			this.stop_preedit_animation();
-			this.update_preedit_text(new IBus.Text.from_string(text), (uint) text.length, true);
+			/* COMMIT = on focus loss, IBus puts this draft into the text box. */
+			this.update_preedit_text_with_mode(new IBus.Text.from_string(text),
+				(uint) text.length, true, IBus.PreeditFocusMode.COMMIT);
 		}
 
 		/**
@@ -471,7 +477,8 @@ namespace IBSO
 			this.stop_preedit_animation();
 			if (!Engine.config.key_file.get_boolean("general", "preedit-animation")) {
 				var hint = "Listening...";
-				this.update_preedit_text(new IBus.Text.from_string(hint), (uint) hint.length, true);
+				this.update_preedit_text_with_mode(new IBus.Text.from_string(hint),
+					(uint) hint.length, true, IBus.PreeditFocusMode.CLEAR);
 				return;
 			}
 
@@ -504,7 +511,8 @@ namespace IBSO
 				dots = "...";
 				break;
 			}
-			this.update_preedit_text(new IBus.Text.from_string(dots), (uint) dots.length, true);
+			this.update_preedit_text_with_mode(new IBus.Text.from_string(dots),
+				(uint) dots.length, true, IBus.PreeditFocusMode.CLEAR);
 		}
 
 		private void stop_preedit_animation()

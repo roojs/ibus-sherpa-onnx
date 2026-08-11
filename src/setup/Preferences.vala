@@ -202,7 +202,7 @@ namespace IBSO.Setup
 		}
 
 		/**
-		 * Page banner: engine gate, or mic try-out errors from {@link RowMicText}.
+		 * Page banner: engine gate, or mic errors from {@link RowMicText}.
 		 *
 		 * Pass "" to clear when the engine is ready; if the engine is not ready,
 		 * the inactive/running message is kept.
