@@ -83,7 +83,10 @@ namespace IBSO
 		public override void enable()
 		{
 			base.enable();
-			this.debug_lifecycle("enable");
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("enable: listening=%s has_focus=%s enabled=%s engine=%s",
+				listening.to_string(), this.has_focus.to_string(), this.enabled.to_string(),
+				this.engine_name ?? "");
 			this.ensure_transcriber();
 			this.register_properties(this.props);
 			this.update_ui();
@@ -92,7 +95,10 @@ namespace IBSO
 		public override void focus_in()
 		{
 			base.focus_in();
-			this.debug_lifecycle("focus_in");
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("focus_in: listening=%s has_focus=%s enabled=%s engine=%s",
+				listening.to_string(), this.has_focus.to_string(), this.enabled.to_string(),
+				this.engine_name ?? "");
 			Engine.config = Config.load();
 			Engine.bind_hotkey();
 			this.ensure_transcriber();
@@ -100,8 +106,25 @@ namespace IBSO
 
 		public override void focus_out()
 		{
-			this.debug_lifecycle("focus_out");
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("focus_out: listening=%s saw_partial=%s has_focus=%s enabled=%s engine=%s",
+				listening.to_string(), this.saw_partial.to_string(), this.has_focus.to_string(),
+				this.enabled.to_string(), this.engine_name ?? "");
+			/*
+			 * Spoken drafts use {@link IBus.PreeditFocusMode.COMMIT} — IBus
+			 * turns that buffer into real text on focus loss. Do not
+			 * commit_text again here (would double). Restart dots if still on.
+			 */
+			var had_partial = this.saw_partial;
 			base.focus_out();
+			if (!listening || !had_partial) {
+				return;
+			}
+			this.saw_partial = false;
+			this.stop_preedit_animation();
+			if (this.transcriber.listening) {
+				this.start_preedit_animation();
+			}
 		}
 
 		/**
@@ -110,32 +133,38 @@ namespace IBSO
 		 */
 		public override void focus_in_id(string object_path, string client)
 		{
-			this.debug_lifecycle("focus_in_id",
-				"path=%s client=%s".printf(object_path, client));
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("focus_in_id: listening=%s path=%s client=%s engine=%s",
+				listening.to_string(), object_path, client, this.engine_name ?? "");
 			base.focus_in_id(object_path, client);
 		}
 
 		public override void focus_out_id(string object_path)
 		{
-			this.debug_lifecycle("focus_out_id", "path=%s".printf(object_path));
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("focus_out_id: listening=%s path=%s engine=%s",
+				listening.to_string(), object_path, this.engine_name ?? "");
 			base.focus_out_id(object_path);
 		}
 
 		public override void set_content_type(uint purpose, uint hints)
 		{
-			this.debug_lifecycle("set_content_type",
-				"purpose=%u(%s) hints=%u".printf(purpose,
-					((IBus.InputPurpose) purpose).to_string(), hints));
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("set_content_type: listening=%s purpose=%u(%s) hints=%u engine=%s",
+				listening.to_string(), purpose, ((IBus.InputPurpose) purpose).to_string(),
+				hints, this.engine_name ?? "");
 			base.set_content_type(purpose, hints);
 		}
 
 		/**
-		 * Client reset (e.g. Gtk.IMContext.reset on submit): stop listening if on.
-		 * Most apps never call this; cooperating apps can.
+		 * Client reset (composition clear / focus churn): stop listening if on.
 		 */
 		public override void reset()
 		{
-			this.debug_lifecycle("reset");
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("reset: listening=%s has_focus=%s enabled=%s engine=%s",
+				listening.to_string(), this.has_focus.to_string(), this.enabled.to_string(),
+				this.engine_name ?? "");
 			if (this.transcriber != null && this.transcriber.listening) {
 				this.update_listening(false, false);
 			}
@@ -143,69 +172,23 @@ namespace IBSO
 		}
 
 		/**
-		 * 0.6 Phase A0: one-line lifecycle dump for focus / reset investigation.
-		 *
-		 * @param event callback name (''focus_in'', ''reset'', …)
-		 * @param extra optional extra fields (client path, purpose, …)
-		 */
-		private void debug_lifecycle(string event, string extra = "")
-		{
-			var listening = this.transcriber != null && this.transcriber.listening;
-			uint purpose = 0;
-			uint hints = 0;
-			this.get_content_type(out purpose, out hints);
-			if (extra == "") {
-				GLib.debug("%s: listening=%s has_focus=%s enabled=%s purpose=%u(%s) hints=%u engine=%s",
-					event,
-					listening.to_string(),
-					this.has_focus.to_string(),
-					this.enabled.to_string(),
-					purpose,
-					((IBus.InputPurpose) purpose).to_string(),
-					hints,
-					this.engine_name ?? "");
-				return;
-			}
-			GLib.debug("%s: listening=%s has_focus=%s enabled=%s purpose=%u(%s) hints=%u engine=%s %s",
-				event,
-				listening.to_string(),
-				this.has_focus.to_string(),
-				this.enabled.to_string(),
-				purpose,
-				((IBus.InputPurpose) purpose).to_string(),
-				hints,
-				this.engine_name ?? "",
-				extra);
-		}
-
-		/**
 		 * Parse config ''general/hotkey'' into {@link toggle_keyval} / {@link toggle_mods}.
 		 */
 		public static void bind_hotkey()
 		{
-			var hotkey = Engine.config.key_file.get_string("general", "hotkey");
-			var keyval = (uint) 0;
-			var accel_mods = (IBus.ModifierType) 0;
-			IBus.accelerator_parse(hotkey, out keyval, out accel_mods);
-			if (keyval == 0) {
-				var normalized = hotkey.replace("Ctrl+", "Control+").replace("ctrl+", "Control+");
-				var plus = normalized.last_index_of_char('+');
-				if (plus >= 0) {
-					normalized = normalized.substring(0, plus + 1) + normalized.substring(plus + 1).down();
+			uint keyval;
+			IBus.ModifierType mods;
+			if (!Engine.config.hotkey(out keyval, out mods)) {
+				var hotkey = "";
+				try {
+					hotkey = Engine.config.key_file.get_string("general", "hotkey");
+				} catch (GLib.KeyFileError err) {
 				}
-				var kv = (uint) 0;
-				var md = (uint) 0;
-				if (IBus.key_event_from_string(normalized, out kv, out md)) {
-					keyval = kv;
-					accel_mods = (IBus.ModifierType) md;
-				}
-			}
-			if (keyval == 0) {
-				IBus.accelerator_parse("<Control><Shift>space", out keyval, out accel_mods);
+				IBus.accelerator_parse("<Control><Shift>space", out keyval, out mods);
 				GLib.warning("Could not parse hotkey '%s'; using Control+Shift+space", hotkey);
 			}
 			Engine.toggle_keyval = keyval;
-			Engine.toggle_mods = (uint) accel_mods;
+			Engine.toggle_mods = (uint) mods;
 		}
 
 		public override void property_activate(string prop_name, uint prop_state)
@@ -214,6 +197,9 @@ namespace IBSO
 				return;
 			}
 			var on = this.transcriber == null || !this.transcriber.listening;
+			GLib.debug("listening activate turn_on=%s prop_state=%u has_focus=%s enabled=%s path=%s engine=%s",
+				on.to_string(), prop_state, this.has_focus.to_string(), this.enabled.to_string(),
+				this.object_path ?? "", this.engine_name ?? "");
 			this.update_listening(on, true);
 		}
 
@@ -273,7 +259,10 @@ namespace IBSO
 
 		public override void disable()
 		{
-			this.debug_lifecycle("disable");
+			var listening = this.transcriber != null && this.transcriber.listening;
+			GLib.debug("disable: listening=%s has_focus=%s enabled=%s engine=%s",
+				listening.to_string(), this.has_focus.to_string(), this.enabled.to_string(),
+				this.engine_name ?? "");
 			if (this.transcriber != null && this.transcriber.listening) {
 				this.update_listening(false, false);
 				return;
@@ -390,7 +379,9 @@ namespace IBSO
 			}
 			this.saw_partial = true;
 			this.stop_preedit_animation();
-			this.update_preedit_text(new IBus.Text.from_string(text), (uint) text.length, true);
+			/* COMMIT = on focus loss, IBus puts this draft into the text box. */
+			this.update_preedit_text_with_mode(new IBus.Text.from_string(text),
+				(uint) text.length, true, IBus.PreeditFocusMode.COMMIT);
 		}
 
 		/**
@@ -487,7 +478,8 @@ namespace IBSO
 			this.stop_preedit_animation();
 			if (!Engine.config.key_file.get_boolean("general", "preedit-animation")) {
 				var hint = "Listening...";
-				this.update_preedit_text(new IBus.Text.from_string(hint), (uint) hint.length, true);
+				this.update_preedit_text_with_mode(new IBus.Text.from_string(hint),
+					(uint) hint.length, true, IBus.PreeditFocusMode.CLEAR);
 				return;
 			}
 
@@ -520,7 +512,8 @@ namespace IBSO
 				dots = "...";
 				break;
 			}
-			this.update_preedit_text(new IBus.Text.from_string(dots), (uint) dots.length, true);
+			this.update_preedit_text_with_mode(new IBus.Text.from_string(dots),
+				(uint) dots.length, true, IBus.PreeditFocusMode.CLEAR);
 		}
 
 		private void stop_preedit_animation()

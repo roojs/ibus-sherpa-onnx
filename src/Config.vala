@@ -46,6 +46,11 @@ namespace IBSO
 		 */
 		public GLib.KeyFile packs;
 
+		/**
+		 * Fired after ''settings.ini'' is written by {@link save}.
+		 */
+		public signal void changed();
+
 		public Config()
 		{
 			var dir = GLib.Path.build_filename(GLib.Environment.get_user_config_dir(),
@@ -76,6 +81,7 @@ namespace IBSO
 				config.key_file.set_boolean("general", "preedit-animation", true);
 				config.key_file.set_boolean("general", "mute-speakers", true);
 				config.key_file.set_boolean("general", "debug-recordings", false);
+				config.key_file.set_boolean("general", "voice-commands", true);
 				config.key_file.set_string("general", "language", "en");
 			}
 			if (!config.key_file.has_key("general", "hotkey")) {
@@ -93,8 +99,29 @@ namespace IBSO
 			if (!config.key_file.has_key("general", "debug-recordings")) {
 				config.key_file.set_boolean("general", "debug-recordings", false);
 			}
+			if (!config.key_file.has_key("general", "voice-commands")) {
+				config.key_file.set_boolean("general", "voice-commands", true);
+			}
 			if (!config.key_file.has_key("general", "language")) {
 				config.key_file.set_string("general", "language", "en");
+			}
+
+			var id = GLib.Environment.get_os_info(GLib.OsInfoKey.ID);
+			var voice_prefix = "okay linux";
+			if (id != null && id != "" && id != "linux") {
+				voice_prefix = "okay " + id;
+			}
+			if (!config.key_file.has_key("general", "voice-paragraph")) {
+				config.key_file.set_string("general", "voice-paragraph",
+					voice_prefix + " paragraph");
+			}
+			if (!config.key_file.has_key("general", "voice-line-break")) {
+				config.key_file.set_string("general", "voice-line-break",
+					voice_prefix + " line break");
+			}
+			if (!config.key_file.has_key("general", "voice-stop")) {
+				config.key_file.set_string("general", "voice-stop",
+					voice_prefix + " stop");
 			}
 
 			try {
@@ -117,6 +144,7 @@ namespace IBSO
 			} catch (GLib.Error err) {
 				GLib.warning("save settings: %s", err.message);
 			}
+			this.changed();
 		}
 
 		/** Write ''packs.ini''. */
@@ -129,6 +157,41 @@ namespace IBSO
 			} catch (GLib.Error err) {
 				GLib.warning("save packs: %s", err.message);
 			}
+		}
+
+		/**
+		 * Parse ''general/hotkey'' into keyval + mods (same rules as the engine).
+		 * No silent default — returns false if missing or unparsable.
+		 */
+		public bool hotkey(out uint keyval, out IBus.ModifierType mods)
+		{
+			keyval = 0;
+			mods = (IBus.ModifierType) 0;
+			string hotkey;
+			try {
+				hotkey = this.key_file.get_string("general", "hotkey");
+			} catch (GLib.KeyFileError err) {
+				return false;
+			}
+			if (hotkey == "") {
+				return false;
+			}
+			IBus.accelerator_parse(hotkey, out keyval, out mods);
+			if (keyval == 0) {
+				var normalized = hotkey.replace("Ctrl+", "Control+").replace("ctrl+", "Control+");
+				var plus = normalized.last_index_of_char('+');
+				if (plus >= 0) {
+					normalized = normalized.substring(0, plus + 1) + normalized.substring(plus + 1).down();
+				}
+				var kv = (uint) 0;
+				var md = (uint) 0;
+				if (!IBus.key_event_from_string(normalized, out kv, out md)) {
+					return false;
+				}
+				keyval = kv;
+				mods = (IBus.ModifierType) md;
+			}
+			return keyval != 0;
 		}
 
 		/**

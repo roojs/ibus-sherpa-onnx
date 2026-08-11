@@ -1,6 +1,6 @@
 project(
   'ibus-sherpa-onnx',
-  ['c', 'vala'],
+  ['c', 'cpp', 'vala'],
   version: '0.3.2',
   meson_version: '>= 1.0.0',
   default_options: [
@@ -28,10 +28,29 @@ catalog_resources = gnome.compile_resources(
   c_name: 'ibus_sherpa_onnx_resources',
 )
 
-# Hand-written binding: src/sherpa-onnx.vapi (satisfies --pkg from sherpa_dep).
+# Hand-written bindings: src/vapi/*.vapi (sherpa-onnx, icu-uc, rapidfuzz).
+vapi_dir = meson.current_source_dir() / 'src' / 'vapi'
 add_project_arguments(
-  '--vapidir=' + meson.current_source_dir() / 'src',
+  '--vapidir=' + vapi_dir,
   language: 'vala',
+)
+
+# rapidfuzz-cpp is header-only (cmake package; no .pc). Tiny C ABI for Vala.
+cpp = meson.get_compiler('cpp')
+rapidfuzz_inc = include_directories('src/vapi')
+# Confirm headers exist (dev package installed).
+cpp.check_header('rapidfuzz/fuzz.hpp', required: true)
+rapidfuzz_bridge = static_library(
+  'rapidfuzz-bridge',
+  'src/vapi/rapidfuzz_bridge.cpp',
+  include_directories: rapidfuzz_inc,
+  # Vala/C callers need the C ABI; hide C++ symbols.
+  cpp_args: ['-fvisibility=hidden'],
+  install: false,
+)
+rapidfuzz_dep = declare_dependency(
+  link_with: rapidfuzz_bridge,
+  include_directories: rapidfuzz_inc,
 )
 
 # Main product: IBus engine (entry: src/main.vala).
@@ -56,9 +75,11 @@ executable(
     sherpa_dep,
     ibus_dep,
     m_dep,
+    rapidfuzz_dep,
   ],
   vala_args: [
     '--pkg=posix',
+    '--pkg=rapidfuzz',
   ],
   install: true,
   install_dir: get_option('libexecdir'),
@@ -104,6 +125,8 @@ if get_option('cli')
       'src/DebugRecording.vala',
       'src/EngineStub.vala',
       'src/Config.vala',
+      'src/Models.vala',
+      catalog_resources,
     ],
     dependencies: [
       glib_dep,
@@ -112,6 +135,7 @@ if get_option('cli')
       gst_dep,
       gst_app_dep,
       sherpa_dep,
+      ibus_dep,
       m_dep,
     ],
     vala_args: [
@@ -126,23 +150,26 @@ adw_dep = dependency('libadwaita-1')
 soup_dep = dependency('libsoup-3.0')
 json_dep = dependency('json-glib-1.0')
 archive_dep = dependency('libarchive')
-# Hand-written binding: src/icu-uc.vapi + src/Icu.vala (UTF-8 API).
+# Hand-written binding: src/vapi/icu-uc.vapi + src/vapi/Icu.vala (UTF-8 API).
 # Use icu-uc (not icu-i18n): uloc_* lives in libicuuc; Fedora's icu-i18n.pc
 # does not pull -licuuc into the shared link line under --as-needed.
 icu_dep = dependency('icu-uc')
 gee_dep = dependency('gee-0.8')
+atspi_dep = dependency('atspi-2')
 
 # IBus Preferences / component <setup> (RooTerm Dialog naming: Preferences, Row*).
 executable(
   'ibus-setup-sherpa-onnx',
   [
     'src/setup/main.vala',
+    'src/setup/Application.vala',
     'src/Config.vala',
     'src/Models.vala',
-    'src/Icu.vala',
+    'src/vapi/Icu.vala',
     'src/setup/Row.vala',
     'src/setup/RowKeySelect.vala',
     'src/setup/RowSwitch.vala',
+    'src/setup/RowMicText.vala',
     'src/setup/RowSelectModel.vala',
     'src/setup/RowComboLanguage.vala',
     'src/setup/ModelDownload.vala',
@@ -171,6 +198,7 @@ executable(
     gst_dep,
     gst_app_dep,
     sherpa_dep,
+    atspi_dep,
     m_dep,
   ],
   vala_args: [
@@ -212,6 +240,8 @@ if get_option('gtk_demo')
       'src/DebugRecording.vala',
       'src/EngineStub.vala',
       'src/Config.vala',
+      'src/Models.vala',
+      catalog_resources,
     ],
     dependencies: [
       glib_dep,
@@ -222,6 +252,7 @@ if get_option('gtk_demo')
       sherpa_dep,
       gtk_dep,
       adw_dep,
+      ibus_dep,
       m_dep,
     ],
     vala_args: [

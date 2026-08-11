@@ -19,11 +19,12 @@
 namespace IBSO.Setup
 {
 	/**
-	 * Preferences: General (Listening + Select model) and Debug tabs.
-	 * Standalone {@link Adw.Window} — RooTerm ''Dialog.Preferences'' shell.
+	 * Preferences: General, Voice commands, and Debug tabs.
+	 * Standalone {@link Adw.Window} with {@link Adw.ViewStack} pages — RooTerm
+	 * ''Dialog.Preferences'' shell.
 	 *
 	 * Close saves settings and asks {@link ModelDownload} to link or fetch.
-	 * While fetching, the prefs page is replaced by the download status view
+	 * While fetching, the prefs view is replaced by the download status view
 	 * (Cancel returns to editing).
 	 */
 	public class Preferences : Adw.Window
@@ -37,8 +38,13 @@ namespace IBSO.Setup
 		private Gtk.Stack stack;
 		private Gtk.Button close_btn;
 		private Adw.ActionRow browse_row;
+		private Gtk.Box prefs_view;
+		private Adw.ViewStack pages;
+		private Adw.Banner _banner;
+		private IBus.Bus bus;
+		private bool engine_ready = false;
 
-		public Preferences(Gtk.Application app)
+		public Preferences(Application app)
 		{
 			GLib.Object(
 				application: app,
@@ -47,29 +53,28 @@ namespace IBSO.Setup
 				default_width: 720,
 				default_height: 720
 			);
-			this.config = Config.load();
+			this.config = app.config;
 			this.download = new ModelDownload(this.models);
 
-			var general = new Adw.PreferencesPage() {
+			var general_page = new Adw.PreferencesPage() {
 				title = "General",
 				icon_name = "preferences-system-symbolic"
 			};
-			var listening = new Adw.PreferencesGroup() { title = "Listening" };
-			general.add(listening);
+			var general = new Adw.PreferencesGroup() { title = "General" };
+			general_page.add(general);
 			this.add("hotkey", new RowKeySelect(this.config, "hotkey", "Toggle hotkey",
-				"Click, then press a key combination"), listening);
+				"Click, then press a key combination"), general);
 			this.add("notifications", new RowSwitch(this.config, "notifications",
-				"Desktop notifications", "Notify when listening starts or stops"), listening);
+				"Desktop notifications", "Notify when listening starts or stops"), general);
 			this.add("preedit-animation", new RowSwitch(this.config, "preedit-animation",
-				"Preedit listening animation", "Show . .. ... while waiting for speech"), listening);
+				"Preedit listening animation", "Show . .. ... while waiting for speech"), general);
 			this.add("mute-speakers", new RowSwitch(this.config, "mute-speakers",
-				"Mute speakers while listening", "Silence system audio output during dictation"), listening);
-
+				"Mute speakers while listening", "Silence system audio output during dictation"), general);
 			var models = new Adw.PreferencesGroup() {
 				title = "Select model",
 				description = "Closing installs or switches to the selection"
 			};
-			general.add(models);
+			general_page.add(models);
 			var language = new RowComboLanguage(this.config, this.models);
 			this.rows.set("language", language);
 			models.add(language.row);
@@ -81,6 +86,28 @@ namespace IBSO.Setup
 				model.family = this.models.languages.get_string(code, "family");
 				model.fill();
 			});
+
+			var id = GLib.Environment.get_os_info(GLib.OsInfoKey.ID);
+			if (id == null || id == "") {
+				id = "linux";
+			}
+			var voice_page = new Adw.PreferencesPage() {
+				title = "Voice commands",
+				icon_name = "audio-input-microphone-symbolic"
+			};
+			var voice = new Adw.PreferencesGroup() {
+				title = "Voice commands",
+				description = "Spoken phrases (defaults use okay " + id + ")"
+			};
+			voice_page.add(voice);
+			this.add("voice-commands", new RowSwitch(this.config, "voice-commands",
+				"Voice commands", "Match spoken phrases while dictating"), voice);
+			this.add("voice-paragraph",
+				new RowMicText(this, this.config, "voice-paragraph", "Paragraph"), voice);
+			this.add("voice-line-break",
+				new RowMicText(this, this.config, "voice-line-break", "Line break"), voice);
+			this.add("voice-stop",
+				new RowMicText(this, this.config, "voice-stop", "Stop"), voice);
 
 			var debug_page = new Adw.PreferencesPage() {
 				title = "Debug",
@@ -113,15 +140,26 @@ namespace IBSO.Setup
 					((RowSwitch) this.rows.get("debug-recordings")).sw.active;
 			});
 
-			var pages = new Adw.ViewStack();
-			pages.add_titled(general, "general", "General");
-			pages.add_titled(debug_page, "debug", "Debug");
+			this.pages = new Adw.ViewStack();
+			this.pages.add_titled_with_icon(general_page, "general", "General",
+				"preferences-system-symbolic");
+			this.pages.add_titled_with_icon(voice_page, "voice", "Voice commands",
+				"audio-input-microphone-symbolic");
+			this.pages.add_titled_with_icon(debug_page, "debug", "Debug",
+				"applications-engineering-symbolic");
+
+			this._banner = new Adw.Banner("") {
+				revealed = false
+			};
+			this.prefs_view = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+			this.prefs_view.append(this._banner);
+			this.prefs_view.append(this.pages);
 
 			this.stack = new Gtk.Stack() {
 				vhomogeneous = false,
 				hhomogeneous = false
 			};
-			this.stack.add_named(pages, "prefs");
+			this.stack.add_named(this.prefs_view, "prefs");
 			this.stack.add_named(this.download, "download");
 			this.stack.visible_child_name = "prefs";
 
@@ -129,13 +167,14 @@ namespace IBSO.Setup
 			this.close_btn.clicked.connect(() => {
 				this.close();
 			});
+			var switcher = new Adw.ViewSwitcher() {
+				stack = this.pages,
+				policy = Adw.ViewSwitcherPolicy.WIDE
+			};
 			var header = new Adw.HeaderBar() {
 				show_start_title_buttons = false,
 				show_end_title_buttons = false,
-				title_widget = new Adw.ViewSwitcher() {
-					stack = pages,
-					policy = Adw.ViewSwitcherPolicy.WIDE
-				}
+				title_widget = switcher
 			};
 			header.pack_end(this.close_btn);
 			var toolbar = new Adw.ToolbarView();
@@ -151,6 +190,18 @@ namespace IBSO.Setup
 			});
 			this.download.cancelled.connect(() => {
 				this.show_page("prefs");
+			});
+
+			this.bus = new IBus.Bus();
+			this.bus.set_watch_ibus_signal(true);
+			this.bus.connected.connect(() => {
+				this.fill();
+			});
+			this.bus.disconnected.connect(() => {
+				this.fill();
+			});
+			this.bus.global_engine_changed.connect((name) => {
+				this.fill();
 			});
 
 			this.close_request.connect(this.on_close_request);
@@ -186,17 +237,44 @@ namespace IBSO.Setup
 			section.add(row.row);
 		}
 
-		/** Reload rows from disk; language combo follows the active IBus engine. */
+		/**
+		 * Page banner: engine gate, or mic errors from {@link RowMicText}.
+		 *
+		 * Pass "" to clear when the engine is ready; if the engine is not ready,
+		 * the inactive/running message is kept.
+		 *
+		 * @param message Status text, or "" to clear
+		 */
+		public void banner(string message)
+		{
+			if (message != "") {
+				this._banner.title = message;
+				this._banner.revealed = true;
+				return;
+			}
+			if (this.engine_ready) {
+				this._banner.revealed = false;
+				return;
+			}
+			this._banner.title = this.bus.is_connected()
+				? "Sherpa ONNX is not the active input method — select it to edit preferences"
+				: "IBus is not running";
+			this._banner.revealed = true;
+		}
+
+		/** Refresh rows from config; language combo follows the active IBus engine. */
 		public void fill()
 		{
-			this.config = Config.load();
-
 			var id = "";
-			var bus = new IBus.Bus();
-			if (bus.is_connected()) {
-				var eng = bus.get_global_engine();
+			this.engine_ready = false;
+			if (this.bus.is_connected()) {
+				var eng = this.bus.get_global_engine();
 				id = eng != null ? eng.get_name() : "";
+				this.engine_ready = (id == "sherpa-onnx" || id.has_prefix("sherpa-onnx-"));
 			}
+			this.banner("");
+			this.prefs_view.sensitive = this.engine_ready;
+
 			if (id == "sherpa-onnx") {
 				this.config.key_file.set_string("general", "language", "en");
 			}
