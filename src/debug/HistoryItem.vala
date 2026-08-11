@@ -60,30 +60,6 @@ namespace IBSO.Debug
 			this.preview = this.text().split("\n")[0].strip();
 		}
 
-		/** ''file://'' URI for the ''.wav'' (playbin). */
-		public string wav_uri()
-		{
-			return GLib.Filename.to_uri(this.stem + ".wav");
-		}
-
-		/** Float mono PCM from the ''.wav'' (S16LE → [-1, 1]). */
-		public float[] samples()
-		{
-			var input = new GLib.DataInputStream(
-				GLib.File.new_for_path(this.stem + ".wav").read()
-			) {
-				byte_order = GLib.DataStreamByteOrder.LITTLE_ENDIAN
-			};
-			input.skip(40);
-			var nbytes = input.read_uint32();
-			var n = (int) (nbytes / 2);
-			var samples = new float[n];
-			for (var i = 0; i < n; i++) {
-				samples[i] = input.read_int16() / 32768.0f;
-			}
-			return samples;
-		}
-
 		/** Original committed text (''.txt''). */
 		public string text()
 		{

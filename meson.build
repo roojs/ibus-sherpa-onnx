@@ -121,6 +121,7 @@ if get_option('cli')
     'sherpa-onnx-mic',
     [
       'src/cli/main.vala',
+      'src/cli/Application.vala',
       'src/Transcriber.vala',
       'src/DebugRecording.vala',
       'src/EngineStub.vala',
@@ -200,9 +201,11 @@ executable(
     sherpa_dep,
     atspi_dep,
     m_dep,
+    rapidfuzz_dep,
   ],
   vala_args: [
     '--pkg=posix',
+    '--pkg=rapidfuzz',
   ],
   install: true,
   install_dir: get_option('libexecdir'),

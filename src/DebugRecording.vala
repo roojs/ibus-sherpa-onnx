@@ -19,31 +19,44 @@
 namespace IBSO
 {
 	/**
-	 * Write one debug utterance under ''~/.cache/ibus-sherpa-onnx/debug/YYYY-MM-DD/''.
+	 * Write one debug listen session under
+	 * ''~/.cache/ibus-sherpa-onnx/debug/YYYY-MM-DD/''.
 	 *
-	 * Basename ''HHMMSS''. Audio is mono 16 kHz S16LE WAV; text is UTF-8.
+	 * Basename ''HHMMSS'' from listen start. Audio is mono 16 kHz S16LE WAV
+	 * for the whole listen (including pauses); text is UTF-8.
 	 */
 	public class DebugRecording : GLib.Object
 	{
 		/**
-		 * Persist committed text + PCM for one utterance (main loop / Idle).
+		 * Persist session text + PCM (main loop / Idle).
 		 *
-		 * @param text committed transcript (non-empty)
+		 * @param text committed transcripts for the listen (may be empty)
 		 * @param samples float mono PCM at 16 kHz (same as accept_waveform)
+		 * @param started wall time at listen start (basename); null → now
 		 */
-		public static void save(string text, float[] samples)
+		public static void save(string text, float[] samples, GLib.DateTime? started = null)
 		{
-			if (text == "" || samples.length == 0) {
+			/* Skip empty transcripts — silence-only listens clutter Browse.
+			 * Comment out if we ever need to debug “heard nothing” captures. */
+			if (text.strip() == "") {
+				return;
+			}
+			if (samples.length == 0) {
 				return;
 			}
 
-			var now = new GLib.DateTime.now_local();
-			var day = GLib.Path.build_filename(GLib.Environment.get_user_cache_dir(), 
-				"ibus-sherpa-onnx", "debug",now.format("%Y-%m-%d"));
+			var ended = new GLib.DateTime.now_local();
+			var stem_time = started ?? ended;
+			var day = GLib.Path.build_filename(
+				GLib.Environment.get_user_cache_dir(),
+				"ibus-sherpa-onnx",
+				"debug",
+				ended.format("%Y-%m-%d")
+			);
 
 			GLib.DirUtils.create_with_parents(day, 0755);
 
-			var stem = GLib.Path.build_filename(day, now.format("%H%M%S"));
+			var stem = GLib.Path.build_filename(day, stem_time.format("%H%M%S"));
 			try {
 				GLib.FileUtils.set_contents(stem + ".txt", text);
 			} catch (GLib.Error err) {

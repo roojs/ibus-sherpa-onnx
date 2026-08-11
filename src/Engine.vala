@@ -521,7 +521,7 @@ namespace IBSO
 
 			GLib.debug("listening OFF (has_focus=%s)", this.has_focus.to_string());
 			var pending = this.saw_partial ? this.transcriber.last_text : "";
-			this.transcriber.stop();
+			this.transcriber.stop(pending);
 			this.stop_preedit_animation();
 			this.saw_partial = false;
 			if (pending != "") {

@@ -115,11 +115,11 @@ namespace IBSO.Setup
 			};
 			var debug_group = new Adw.PreferencesGroup() {
 				title = "Debug recordings",
-				description = "Save utterance audio and text under ~/.cache/ibus-sherpa-onnx/debug/"
+				description = "Save each listen session (audio including pauses) under ~/.cache/ibus-sherpa-onnx/debug/"
 			};
 			debug_page.add(debug_group);
 			var debug_sw = new RowSwitch(this.config, "debug-recordings",
-				"Save debug recordings", "Record each committed utterance for later review");
+				"Save debug recordings", "Record each listen session for later review");
 			this.add("debug-recordings", debug_sw, debug_group);
 
 			this.browse_row = new Adw.ActionRow() {

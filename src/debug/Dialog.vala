@@ -26,17 +26,18 @@ namespace IBSO.Debug
 		private History history;
 		private Gtk.TextBuffer original_buf;
 		private Gtk.TextBuffer output_buf;
+		private Gtk.TextView output_view;
 		private Gtk.Button replay_btn;
+		private Gtk.Label match_label;
 		private Gtk.Box stars_box;
+		private Gtk.Box out_star_row;
 		private Stars original_stars;
 		private Stars output_stars;
 		private HistoryItem? current;
-		private Gst.Element? player;
-		private ulong player_bus_id;
 		private IBSO.Transcriber? transcriber;
-		private bool play_done;
-		private bool asr_done;
 		private bool replaying;
+		/** Committed endpoint texts for this Replay (newline between). */
+		private string output_commits = "";
 
 		/**
 		 * @param parent Preferences window
@@ -75,7 +76,7 @@ namespace IBSO.Debug
 			this.replay_btn.clicked.connect(this.on_replay);
 
 			this.output_buf = new Gtk.TextBuffer(null);
-			var output_view = new Gtk.TextView.with_buffer(this.output_buf) {
+			this.output_view = new Gtk.TextView.with_buffer(this.output_buf) {
 				editable = false,
 				wrap_mode = Gtk.WrapMode.WORD_CHAR,
 				vexpand = true
@@ -83,7 +84,7 @@ namespace IBSO.Debug
 			var output_frame = new Gtk.Frame(null) {
 				label = "Output",
 				child = new Gtk.ScrolledWindow() {
-					child = output_view,
+					child = this.output_view,
 					min_content_height = 100
 				}
 			};
@@ -97,25 +98,31 @@ namespace IBSO.Debug
 				this.current.write_output_rating(n);
 			});
 
+			this.match_label = new Gtk.Label("") {
+				xalign = 0,
+				visible = false
+			};
+
 			var orig_star_row = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 8);
 			orig_star_row.append(new Gtk.Label("Original") {
 				width_chars = 8,
 				xalign = 0
 			});
 			orig_star_row.append(this.original_stars);
-			var out_star_row = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 8);
-			out_star_row.append(new Gtk.Label("Output") {
+			this.out_star_row = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 8);
+			this.out_star_row.append(new Gtk.Label("Output") {
 				width_chars = 8,
 				xalign = 0
 			});
-			out_star_row.append(this.output_stars);
+			this.out_star_row.append(this.output_stars);
 
 			this.stars_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 6) {
 				visible = false,
 				margin_top = 8
 			};
+			this.stars_box.append(this.match_label);
 			this.stars_box.append(orig_star_row);
-			this.stars_box.append(out_star_row);
+			this.stars_box.append(this.out_star_row);
 
 			var right = new Gtk.Box(Gtk.Orientation.VERTICAL, 12) {
 				hexpand = true,
@@ -142,9 +149,9 @@ namespace IBSO.Debug
 
 			this.close_request.connect(() => {
 				this.replaying = false;
-				this.stop_player();
-				this.play_done = false;
-				this.asr_done = false;
+				if (this.transcriber != null) {
+					this.transcriber.stop_replay();
+				}
 				return false;
 			});
 		}
@@ -152,11 +159,15 @@ namespace IBSO.Debug
 		private void on_selected(HistoryItem? item)
 		{
 			this.replaying = false;
-			this.stop_player();
-			this.play_done = false;
-			this.asr_done = false;
+			this.output_commits = "";
+			if (this.transcriber != null) {
+				this.transcriber.stop_replay();
+			}
 			this.current = item;
 			this.stars_box.visible = false;
+			this.match_label.visible = false;
+			this.match_label.label = "";
+			this.out_star_row.visible = true;
 			this.original_buf.set_text("", -1);
 			this.output_buf.set_text("", -1);
 			this.original_stars.fill(0);
@@ -176,35 +187,24 @@ namespace IBSO.Debug
 			if (this.current == null) {
 				return;
 			}
-			this.replaying = false;
-			this.stop_player();
 			this.output_buf.set_text("", -1);
+			this.output_commits = "";
 			this.output_stars.fill(0);
+			this.match_label.visible = false;
+			this.match_label.label = "";
+			this.out_star_row.visible = true;
+			this.stars_box.visible = false;
 			this.current.clear_output_rating();
-			this.play_done = false;
-			this.asr_done = false;
 			this.replaying = true;
 			this.replay_btn.sensitive = false;
 
 			this.ensure_transcriber();
-			if (this.transcriber != null) {
-				this.transcriber.feed_wav(this.current.samples());
-			} else {
-				this.asr_done = true;
+			if (this.transcriber == null) {
+				this.replaying = false;
+				this.replay_btn.sensitive = true;
+				return;
 			}
-
-			this.player = Gst.ElementFactory.make("playbin", "debug-replay");
-			this.player.set("uri", this.current.wav_uri());
-			var bus = this.player.get_bus();
-			bus.add_signal_watch();
-			this.player_bus_id = bus.message.connect((b, message) => {
-				if (message.type == Gst.MessageType.EOS || message.type == Gst.MessageType.ERROR) {
-					this.stop_player();
-					this.play_done = true;
-					this.maybe_finish_replay();
-				}
-			});
-			this.player.set_state(Gst.State.PLAYING);
+			this.transcriber.replay_wav(this.current.stem + ".wav");
 		}
 
 		/**
@@ -257,48 +257,53 @@ namespace IBSO.Debug
 				if (!this.replaying) {
 					return;
 				}
-				this.output_buf.set_text(text, -1);
+				if (this.output_commits == "") {
+					this.output_buf.set_text(text, -1);
+				} else {
+					this.output_buf.set_text(this.output_commits + "\n" + text, -1);
+				}
+				Gtk.TextIter end;
+				this.output_buf.get_end_iter(out end);
+				this.output_buf.place_cursor(end);
+				this.output_view.scroll_mark_onscreen(this.output_buf.get_insert());
 			});
 			this.transcriber.endpoint.connect((text) => {
+				if (!this.replaying || text.strip() == "") {
+					return;
+				}
+				if (this.output_commits != "") {
+					this.output_commits += "\n";
+				}
+				this.output_commits += text;
+				this.output_buf.set_text(this.output_commits, -1);
+				Gtk.TextIter end;
+				this.output_buf.get_end_iter(out end);
+				this.output_buf.place_cursor(end);
+				this.output_view.scroll_mark_onscreen(this.output_buf.get_insert());
+			});
+			this.transcriber.replay_finished.connect(() => {
 				if (!this.replaying) {
 					return;
 				}
-				this.output_buf.set_text(text, -1);
-				this.asr_done = true;
-				this.maybe_finish_replay();
+				this.replaying = false;
+				this.replay_btn.sensitive = this.current != null;
+				if (this.current == null) {
+					return;
+				}
+				if (this.output_commits != "") {
+					this.output_buf.set_text(this.output_commits, -1);
+				}
+				Gtk.TextIter start, end;
+				this.output_buf.get_bounds(out start, out end);
+				var output = this.output_buf.get_text(start, end, false);
+				this.current.write_output(output);
+				var score = RapidFuzz.ratio(this.current.text().strip(), output.strip());
+				this.match_label.label = "Match: %.0f%%".printf(score);
+				this.match_label.visible = true;
+				this.out_star_row.visible = score < 100.0;
+				this.stars_box.visible = true;
+				this.original_stars.fill(this.current.rating());
 			});
-		}
-
-		private void maybe_finish_replay()
-		{
-			if (!this.replaying || !this.play_done || !this.asr_done) {
-				return;
-			}
-			this.replaying = false;
-			this.replay_btn.sensitive = this.current != null;
-			if (this.current == null) {
-				return;
-			}
-			Gtk.TextIter start, end;
-			this.output_buf.get_bounds(out start, out end);
-			this.current.write_output(this.output_buf.get_text(start, end, false));
-			this.stars_box.visible = true;
-			this.original_stars.fill(this.current.rating());
-		}
-
-		private void stop_player()
-		{
-			if (this.player == null) {
-				return;
-			}
-			var bus = this.player.get_bus();
-			if (this.player_bus_id != 0) {
-				bus.disconnect(this.player_bus_id);
-				this.player_bus_id = 0;
-			}
-			bus.remove_signal_watch();
-			this.player.set_state(Gst.State.NULL);
-			this.player = null;
 		}
 	}
 }
