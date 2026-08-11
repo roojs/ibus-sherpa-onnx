@@ -33,7 +33,13 @@ sudo apt-get install -y \
   libgtk-4-dev \
   libadwaita-1-dev \
   libsoup-3.0-dev \
+  libjson-glib-dev \
   libarchive-dev \
+  libicu-dev \
+  libgee-0.8-dev \
+  libatspi2.0-dev \
+  librapidfuzz-cpp-dev \
+  g++ \
   libonnxruntime-dev
 ```
 
@@ -127,7 +133,7 @@ What the `.deb` ships (see `meson.build` `install:`):
 
 - `/usr/libexec/ibus-engine-sherpa-onnx`
 - `/usr/libexec/ibus-setup-sherpa-onnx` (prefs binary)
-- `/usr/bin/ibus-setup-sherpa-onnx` (wrapper → `gtk-launch`)
+- `/usr/bin/ibus-setup-sherpa-onnx` (wrapper → `gtk4-launch`)
 - IBus component XML, setup `.desktop`, fetch script, empty `models/` dir
   (archive digests come from the GitHub Releases API at download time)
 

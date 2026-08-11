@@ -7,6 +7,7 @@ Build-Depends: debhelper-compat (= 13),
                ninja-build,
                pkg-config,
                valac,
+               g++,
                libglib2.0-dev,
                libibus-1.0-dev,
                libgstreamer1.0-dev,
@@ -18,6 +19,8 @@ Build-Depends: debhelper-compat (= 13),
                libarchive-dev,
                libicu-dev,
                libgee-0.8-dev,
+               libatspi2.0-dev,
+               librapidfuzz-cpp-dev,
                libsherpa-onnx-c-api-dev
 Standards-Version: 4.6.2
 Homepage: https://github.com/roojs/ibus-sherpa-onnx
@@ -36,7 +39,7 @@ Depends: ${shlibs:Depends},
          gstreamer1.0-pipewire | gstreamer1.0-pulseaudio,
          pkexec,
          polkitd,
-         libgtk-3-bin
+         libgtk-4-bin
 Description: IBus speech dictation engine using sherpa-onnx
  Local streaming speech-to-text as an IBus input method, powered by
  sherpa-onnx (Nemotron online transducer).

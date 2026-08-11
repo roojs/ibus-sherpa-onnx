@@ -39,11 +39,14 @@ Requires:       gstreamer1-plugins-good
 Requires:       gstreamer1-plugins-base
 Requires:       gstreamer1-plugin-pipewire
 Requires:       polkit
-Requires:       gtk3
 Requires:       gtk4
 Requires:       libadwaita
 Requires:       libsoup3
 Requires:       libarchive
+Requires:       json-glib
+Requires:       libgee
+Requires:       libicu
+Requires:       at-spi2-core
 
 %description
 Local streaming speech-to-text as an IBus input method, powered by

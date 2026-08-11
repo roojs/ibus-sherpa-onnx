@@ -28,19 +28,22 @@ sudo apt install \
   ibus \
   libonnxruntime1.21 \
   libgtk-4-1 \
+  libgtk-4-bin \
   libadwaita-1-0 \
   libsoup-3.0-0 \
   libjson-glib-1.0-0 \
   libarchive13t64 \
   libibus-1.0-5 \
+  libgee-0.8-2 \
+  libicu76 \
+  libatspi2.0-0t64 \
   libgstreamer1.0-0 \
   libgstreamer-plugins-base1.0-0 \
   gstreamer1.0-plugins-base \
   gstreamer1.0-plugins-good \
   gstreamer1.0-pipewire \
   pkexec \
-  polkitd \
-  libgtk-3-bin
+  polkitd
 ```
 
 Wait until that finishes with no errors before continuing.
@@ -106,12 +109,14 @@ It downloads about **440 MB**, may ask for your password, turns Sherpa on as you
 sudo dnf install \
   ibus \
   onnxruntime \
-  gtk3 \
   gtk4 \
   libadwaita \
   libsoup3 \
   json-glib \
   libarchive \
+  libgee \
+  libicu \
+  at-spi2-core \
   gstreamer1-plugins-base \
   gstreamer1-plugins-good \
   gstreamer1-plugin-pipewire \

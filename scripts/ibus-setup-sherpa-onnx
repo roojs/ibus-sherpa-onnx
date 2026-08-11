@@ -1,6 +1,9 @@
 #!/bin/sh
 # PATH entry: launch via desktop file so the WM gets an activation token
 # (avoids the window appearing behind the terminal).
+if command -v gtk4-launch >/dev/null 2>&1; then
+	exec gtk4-launch ibus-setup-sherpa-onnx "$@"
+fi
 if command -v gtk-launch >/dev/null 2>&1; then
 	exec gtk-launch ibus-setup-sherpa-onnx "$@"
 fi

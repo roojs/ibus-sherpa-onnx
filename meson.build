@@ -208,7 +208,7 @@ executable(
   install_dir: get_option('libexecdir'),
 )
 
-# PATH wrapper → gtk-launch (activation token); real binary stays in libexec.
+# PATH wrapper → gtk4-launch (activation token); real binary stays in libexec.
 install_data(
   'scripts/ibus-setup-sherpa-onnx',
   install_dir: get_option('bindir'),
