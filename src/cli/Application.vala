@@ -85,6 +85,7 @@ namespace IBSO.Cli
 		public static bool opt_debug = false;
 		public static bool opt_debug_critical = false;
 		public static bool opt_stats = false;
+		public static bool opt_fast_transcribe = false;
 		public static string opt_script = "";
 		public static string opt_wav = "";
 		public static string opt_language = "";
@@ -105,6 +106,8 @@ namespace IBSO.Cli
 			{ "from", 0, 0, OptionArg.DOUBLE, ref opt_from, "WAV start time (seconds)", "SEC" },
 			{ "to", 0, 0, OptionArg.DOUBLE, ref opt_to, "WAV end time (seconds, default EOF)", "SEC" },
 			{ "chunk-ms", 0, 0, OptionArg.INT, ref opt_chunk_ms, "WAV feed chunk size (ms)", "N" },
+			{ "fast-transcribe", 0, 0, OptionArg.NONE, ref opt_fast_transcribe,
+				"Feed WAV as fast as possible (not realtime)", null },
 			{ "language", 0, 0, OptionArg.STRING, ref opt_language, "Catalog language code", "CODE" },
 			{ GLib.OPTION_REMAINING, 0, 0, OptionArg.FILENAME_ARRAY, ref remaining,
 				null, "[MODEL-DIR]" },
@@ -304,39 +307,20 @@ namespace IBSO.Cli
 				return 1;
 			}
 
-			var chunk_n = (int) (16000.0 * opt_chunk_ms / 1000.0);
-			if (chunk_n < 1) {
-				chunk_n = 1;
+			var chunk_n = int.max(1, (int) (16000.0 * opt_chunk_ms / 1000.0));
+			var feed_chunks = IBSO.Debug.Recording.load_chunks(opt_wav);
+			if (feed_chunks != null && (i0 > 0 || i1 < n_all)) {
+				feed_chunks = IBSO.Debug.Recording.slice_chunks(feed_chunks, i0, i1);
 			}
 			var file_end = opt_from + pcm.length / 16000.0;
-			GLib.debug("#wav %s from=%.3f to=%.3f chunk_ms=%d samples=%d language=%s model=%s",
-				opt_wav, opt_from, file_end, opt_chunk_ms, pcm.length, language, model_dir);
+			GLib.debug("#wav %s from=%.3f to=%.3f chunk_ms=%d live_chunks=%s fast=%s samples=%d language=%s model=%s",
+				opt_wav, opt_from, file_end, opt_chunk_ms,
+				feed_chunks != null ? feed_chunks.length.to_string() : "none",
+				opt_fast_transcribe.to_string(), pcm.length, language, model_dir);
 
-			transcriber.stop_replay();
-			transcriber.file_feeding = true;
-			transcriber.notify_replay_finished = true;
-			transcriber.feed_pos_s = 0.0;
-			transcriber.last_text = "";
-			transcriber.audio_queue.push(new IBSO.Transcriber.PcmChunk.for_reset());
+			var replay = new IBSO.Debug.Replay(transcriber);
 
-			var off = 0;
-			while (off < pcm.length) {
-				var cn = int.min(chunk_n, pcm.length - off);
-				var t0 = opt_from + off / 16000.0;
-				var t1 = opt_from + (off + cn) / 16000.0;
-				var sum = 0.0;
-				var slice = new float[cn];
-				for (var i = 0; i < cn; i++) {
-					slice[i] = pcm[off + i];
-					sum += (double) slice[i] * slice[i];
-				}
-				GLib.debug("#chunk t=%.3f-%.3f n=%d rms=%.4f", t0, t1, cn, Math.sqrt(sum / cn));
-				transcriber.audio_queue.push(new IBSO.Transcriber.PcmChunk((owned) slice));
-				off += cn;
-			}
-			transcriber.audio_queue.push(new IBSO.Transcriber.PcmChunk.for_flush());
-
-			string[] commits = {};
+			var first_commit = true;
 			var loop = new GLib.MainLoop();
 			transcriber.partial.connect((text) => {
 				GLib.debug("#partial t=%.3f text=%s", opt_from + transcriber.feed_pos_s, text);
@@ -345,24 +329,72 @@ namespace IBSO.Cli
 				if (text.strip() == "") {
 					return;
 				}
-				commits += text;
 				GLib.debug("#endpoint t=%.3f text=%s", opt_from + transcriber.feed_pos_s, text);
 				if (opt_stats) {
 					GLib.debug("#stats tokens=%d audio=%.2fs wall=%.2fs partials=%d",
-						transcriber.last_token_count, transcriber.last_audio_s, 
+						transcriber.last_token_count, transcriber.last_audio_s,
 						transcriber.last_wall_s, transcriber.last_partial_count);
 				}
+				if (!first_commit) {
+					command_line.print("\n");
+				}
+				first_commit = false;
+				command_line.print("%s\n", text);
 			});
 			transcriber.replay_finished.connect(() => {
 				loop.quit();
 			});
-			loop.run();
 
-			for (var i = 0; i < commits.length; i++) {
-				if (i > 0) {
-					command_line.print("\n");
+			if (opt_fast_transcribe) {
+				transcriber.file_feeding = true;
+				transcriber.notify_replay_finished = true;
+				transcriber.feed_pos_s = 0.0;
+				transcriber.last_text = "";
+				transcriber.audio_queue.push(new IBSO.Transcriber.PcmChunk.for_reset());
+				var off = 0;
+				var ci = 0;
+				while (off < pcm.length) {
+					var cn = chunk_n;
+					if (feed_chunks != null && ci < feed_chunks.length) {
+						cn = feed_chunks[ci++];
+					}
+					cn = int.min(cn, pcm.length - off);
+					var t0 = opt_from + off / 16000.0;
+					var t1 = opt_from + (off + cn) / 16000.0;
+					var sum = 0.0;
+					var slice = new float[cn];
+					for (var i = 0; i < cn; i++) {
+						slice[i] = pcm[off + i];
+						sum += (double) slice[i] * slice[i];
+					}
+					GLib.debug("#chunk t=%.3f-%.3f n=%d rms=%.4f", t0, t1, cn, Math.sqrt(sum / cn));
+					transcriber.audio_queue.push(new IBSO.Transcriber.PcmChunk((owned) slice));
+					off += cn;
 				}
-				command_line.print("%s\n", commits[i]);
+				transcriber.audio_queue.push(new IBSO.Transcriber.PcmChunk.for_flush());
+				loop.run();
+				return 0;
+			}
+
+			/* Default: same GStreamer path as Browse Replay. */
+			var path = opt_wav;
+			string? tmp = null;
+			if (opt_from > 0.0 || opt_to >= 0.0) {
+				tmp = GLib.Path.build_filename(GLib.Environment.get_tmp_dir(),
+					"sherpa-onnx-mic-%d.wav".printf((int) GLib.get_monotonic_time()));
+				try {
+					IBSO.Debug.Recording.write_wav_s16le(tmp, pcm, 16000);
+				} catch (GLib.Error err) {
+					GLib.critical("%s", err.message);
+					return 1;
+				}
+				path = tmp;
+			}
+			GLib.debug("#replay %s", path);
+			replay.start(path, feed_chunks);
+			loop.run();
+			if (tmp != null) {
+				GLib.FileUtils.unlink(tmp);
 			}
 			return 0;
 		}

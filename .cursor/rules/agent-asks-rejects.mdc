@@ -1,0 +1,13 @@
+---
+description: Follow project coding standards; current task notes only
+alwaysApply: true
+---
+
+# Vala work
+
+Before editing Vala: follow **`docs/coding-standards-router.md`** → read the matching sections in **`docs/coding-standards.md`**. Do not re-derive or re-record those rules here.
+
+## Layout
+
+- Debug recordings: `IBSO.Debug.Recording`, `Feed`, `Replay` under `src/debug/`.
+- Transcriber is mic + ASR worker; Replay owns the GStreamer tee and chunk feed.

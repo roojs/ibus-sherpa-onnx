@@ -16,25 +16,27 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-namespace IBSO
+namespace IBSO.Debug
 {
 	/**
 	 * Write one debug listen session under
 	 * ''~/.cache/ibus-sherpa-onnx/debug/YYYY-MM-DD/''.
 	 *
 	 * Basename ''HHMMSS'' from listen start. Audio is mono 16 kHz S16LE WAV
-	 * for the whole listen (including pauses); text is UTF-8.
+	 * for the whole listen (including pauses); text is UTF-8; ''.chunks'' is
+	 * little-endian int32 sample counts per live ''accept_waveform''.
 	 */
-	public class DebugRecording : GLib.Object
+	public class Recording : GLib.Object
 	{
 		/**
-		 * Persist session text + PCM (main loop / Idle).
+		 * Persist session text + PCM + live chunk sizes (main loop / Idle).
 		 *
 		 * @param text committed transcripts for the listen (may be empty)
 		 * @param samples float mono PCM at 16 kHz (same as accept_waveform)
+		 * @param chunk_ns sample count per accept_waveform during the listen
 		 * @param started wall time at listen start (basename); null → now
 		 */
-		public static void save(string text, float[] samples, GLib.DateTime? started = null)
+		public static void save(string text, float[] samples, int[] chunk_ns, GLib.DateTime? started = null)
 		{
 			/* Skip empty transcripts — silence-only listens clutter Browse.
 			 * Comment out if we ever need to debug “heard nothing” captures. */
@@ -68,7 +70,79 @@ namespace IBSO
 			} catch (GLib.Error err) {
 				GLib.warning("debug recording wav: %s", err.message);
 				GLib.FileUtils.unlink(stem + ".txt");
+				return;
 			}
+			var chunks = GLib.FileStream.open(stem + ".chunks", "wb");
+			if (chunks == null) {
+				GLib.warning("debug recording chunks: open failed");
+			} else {
+				/* fwrite(buf, sizeof(int), length) — cast keeps int count as length. */
+				chunks.write((uint8[]) chunk_ns, sizeof(int));
+			}
+		}
+
+		/**
+		 * Load live ''accept_waveform'' sizes from a sibling ''.chunks'' file.
+		 *
+		 * @param wav_path path ending in ''.wav'' (or a stem); ''.chunks'' is derived
+		 * @return little-endian int32 sample counts, or null if missing / invalid
+		 */
+		public static int[]? load_chunks(string wav_path)
+		{
+			string chunks_path;
+			if (wav_path.has_suffix(".wav")) {
+				chunks_path = wav_path.slice(0, wav_path.length - 4) + ".chunks";
+			} else {
+				chunks_path = wav_path + ".chunks";
+			}
+			uint8[] data;
+			try {
+				GLib.FileUtils.get_data(chunks_path, out data);
+			} catch (GLib.Error err) {
+				return null;
+			}
+			if (data.length == 0 || data.length % (int) sizeof(int) != 0) {
+				GLib.warning("debug chunks invalid: %s (%d bytes)", chunks_path, data.length);
+				return null;
+			}
+			var n = data.length / (int) sizeof(int);
+			var chunk_ns = new int[n];
+			GLib.Memory.copy((void*) chunk_ns, data, data.length);
+			return chunk_ns;
+		}
+
+		/**
+		 * Restrict live chunk sizes to a sample window ''[i0, i1)'' (CLI --from/--to).
+		 *
+		 * @param chunk_ns full-session sample counts
+		 * @param i0 first sample index (inclusive)
+		 * @param i1 end sample index (exclusive)
+		 * @return chunk sizes covering only that window (may be empty)
+		 */
+		public static int[] slice_chunks(int[] chunk_ns, int i0, int i1)
+		{
+			var buf = new GLib.Array<int>(false, false, (uint) sizeof(int));
+			if (i1 <= i0) {
+				return new int[0];
+			}
+			var pos = 0;
+			foreach (var n in chunk_ns) {
+				var a = int.max(pos, i0);
+				var b = int.min(pos + n, i1);
+				if (b > a) {
+					var len = b - a;
+					buf.append_val(len);
+				}
+				pos += n;
+				if (pos >= i1) {
+					break;
+				}
+			}
+			var result = new int[buf.length];
+			if (buf.length > 0) {
+				GLib.Memory.copy((void*) result, buf.data, buf.length * sizeof(int));
+			}
+			return result;
 		}
 
 		/**
@@ -78,7 +152,7 @@ namespace IBSO
 		 * @param samples float mono PCM
 		 * @param sample_rate e.g. 16000
 		 */
-		private static void write_wav_s16le(string path, float[] samples, int sample_rate)
+		public static void write_wav_s16le(string path, float[] samples, int sample_rate)
 			throws GLib.Error
 		{
 			var out = new GLib.DataOutputStream(

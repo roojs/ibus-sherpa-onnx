@@ -16,16 +16,25 @@
 
 ## Facts so far (213338)
 
-- 🔷 Same miss on **live** and **Replay** → not mic-only; path is accept/decode/endpoint/reset (or the model).
+- 🔷 Same miss on **live** and **Replay** (saved that day) → not mic-only; path is accept/decode/endpoint/reset (or the model).
 - 🔷 Silence gap before that line ≈ **1.2s** (around rule2). Speech energy returns right as that gap ends.
 - 🔷 First burst after the gap (“pair”-window) RMS ≈ following “Devices”-window — **not** an obvious quiet-onset / AGC story.
 
+## CLI re-feed (2026-08-11 evening)
+
+Default `--wav` now uses the same GStreamer Replay path as Browse; `--fast-transcribe` dumps the queue ASAP.
+
+- 🔷 **Could not reproduce the drop** on current code: Replay and fast both say **“Getting pair new devices…”** for the post-pause line (0–12s, three Replay runs).
+- 🔷 Live/old Replay text still says **“Devices…”** (no “pair”).
+- 🔷 Short cold start `--from 6.4 --to 10` (fast) still said **“New devices…”** — onset-only can lose the first word; that is a different cut than the mid-listen case.
+
+So: audio is on the WAV; today’s engine+Replay is not dropping “pair” on this clip the way the saved session did. Next: find what differed live that day (model pack, endpoint timing, or a since-changed code path), or catch a fresh live miss with `--debug` traces.
+
 ## Open (do not treat as settled)
 
-- 💩 Exact sample index where endpoint fired vs where “pair” begins — need a traced Replay (log endpoint time + result text), not a guessed timeline.
-- 💩 Whether “pair” was ever in a partial and then wiped on reset, vs never decoded.
-- 💩 Whether the model alone drops it even **without** our reset (e.g. feed the post-pause slice as a fresh stream).
-- 💩 Chunk / left-context behaviour of the **1120ms** Nemotron pack on a hard reset.
+- 💩 What made the **saved** live/Replay drop “pair” if re-Replay now keeps it.
+- 💩 Whether “pair” was ever in a partial and then wiped on reset, vs never decoded (need a traced miss).
+- 💩 Chunk / left-context behaviour of the **1120ms** Nemotron pack on a hard reset / cold onset.
 
 ## Fix direction (careful — no blunt re-feed)
 
@@ -38,24 +47,33 @@ If we must touch the stream:
 - 🔷 Prefer **small, deliberate padding** (e.g. a few ms of silence or model-required left context) over splicing real speech twice, if padding is what the pack needs.
 - 🔷 Prove on 213338 Replay: Output line becomes **“pair devices…”** (or equivalent) without duplicating the previous line’s tail.
 
-## Next checks
+## Reproduced: “flow” drop (214954, UI Replay log → CLI)
 
-Build CLI: `meson setup build -Dcli=true && ninja -C build sherpa-onnx-mic`
+UI Replay (`ibus-setup-sherpa-onnx.debug.log`, stem **214954**) chopped at:
+
+- `#endpoint t=51.712` …chunk…
+- `#endpoint t=56.192 text=We should be able to do a testable` ← **no “flow”**
+- next speech `#partial t=58.368` Whereby…
+
+Energy bump ~**55.8–56.2s** sits right at that endpoint (likely “flow”).
 
 ```bash
-WAV=~/.cache/ibus-sherpa-onnx/debug/2026-08-11/213338.wav
+WAV=~/.cache/ibus-sherpa-onnx/debug/2026-08-11/214954.wav
 MODEL=/usr/share/ibus-sherpa-onnx/models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-1120ms-int8-2026-04-25
 
-# Full file — expect “Devices…” without “pair” after first endpoint
-./build/sherpa-onnx-mic --debug --wav "$WAV" --stats "$MODEL" 2>full.trace | tee full.out
+# Same window as the UI miss → no “flow”
+./build/sherpa-onnx-mic --debug --wav "$WAV" --from 51.7 --to 58 "$MODEL"
+# → We should be able to do a testable
 
-# Around the miss
-./build/sherpa-onnx-mic --debug --wav "$WAV" --from 5 --to 12 "$MODEL" 2>mid.trace | tee mid.out
-
-# Fresh stream on post-pause only (no prior utterance)
-./build/sherpa-onnx-mic --debug --wav "$WAV" --from 6.4 --to 10 "$MODEL" 2>onset.trace | tee onset.out
+# A bit more audio after → “flow” appears
+./build/sherpa-onnx-mic --debug --wav "$WAV" --from 50 --to 60 "$MODEL"
+# → … testable flow whereby …
 ```
 
-Compare: does onset-only recover “pair”? Does full-file still drop it after the first endpoint? That answers “reset/context” vs “model never hears pair” **before** any splice/padding fix.
+So this one **is** CLI-reproducible from the log splice times: endpoint commits **before** “flow” is in the text; stretching `--to` past the next phrase recovers the word.
 
-With `--debug`, `GLib.debug` traces (`#chunk` / `#partial` / `#endpoint`) go to stderr (and always to `~/.cache/ibus-sherpa-onnx/sherpa-onnx-mic.debug.log`).
+## CLI / UI traces
+
+- CLI: `./build/sherpa-onnx-mic --debug --wav …` → stderr + `sherpa-onnx-mic.debug.log`
+- Browse Replay: `#replay` / `#partial` / `#endpoint` → `~/.cache/ibus-sherpa-onnx/ibus-setup-sherpa-onnx.debug.log`  
+  After a UI run, say the stem time; use `#endpoint` `t=` values as `--from` / `--to` on the CLI.

@@ -104,6 +104,11 @@ namespace IBSO
 		 * Kept across ASR endpoints (includes mid-session silence).
 		 */
 		private GLib.Array<float> session_pcm = new GLib.Array<float>(false, false, (uint) sizeof(float));
+		/**
+		 * Worker-only sample counts per {@link SherpaOnnx.OnlineStream.accept_waveform}
+		 * during the listen (same order as live feed). Written to ''.chunks''.
+		 */
+		private GLib.Array<int> session_chunk_n = new GLib.Array<int>(false, false, (uint) sizeof(int));
 		/** Worker-only committed texts for this listen (newline between). */
 		private string session_text = "";
 		private bool session_recording = false;
@@ -113,14 +118,11 @@ namespace IBSO
 		private string session_pending = "";
 
 		/**
-		 * True while {@link replay_wav} / CLI file feed is active (no mic).
-		 * Main / CLI sets; worker clears after flush.
+		 * True while debug Replay / CLI file feed is active (no mic).
+		 * Main / CLI / {@link IBSO.Debug.Replay} sets; worker clears after flush.
 		 */
 		public bool file_feeding { get; set; default = false; }
 
-		/** Synced file→speaker pipeline for {@link replay_wav}. */
-		private Gst.Pipeline? replay_pipeline = null;
-		private ulong replay_bus_id = 0;
 		/** Emit {@link replay_finished} after the worker flush Idle. */
 		public bool notify_replay_finished { get; set; default = false; }
 
@@ -158,7 +160,7 @@ namespace IBSO
 		public int last_partial_count { get; private set; default = 0; }
 
 		/**
-		 * Seconds of file PCM accepted so far during file feed / {@link replay_wav}
+		 * Seconds of file PCM accepted so far during file feed / Replay
 		 * (worker updates; CLI reads on Idle signals).
 		 */
 		public double feed_pos_s { get; set; default = 0.0; }
@@ -296,6 +298,7 @@ namespace IBSO
 				this.partial_updates = 0;
 				this.segment_start_us = GLib.get_monotonic_time();
 				this.session_pcm.set_size(0);
+				this.session_chunk_n.set_size(0);
 				this.session_text = "";
 				this.session_recording = this.listening && !this.file_feeding
 					&& this.config.key_file.get_boolean("general", "debug-recordings");
@@ -342,6 +345,7 @@ namespace IBSO
 				this.hypothesis = "";
 				this.partial_updates = 0;
 				this.session_pcm.set_size(0);
+				this.session_chunk_n.set_size(0);
 				this.session_text = "";
 				this.session_recording = false;
 				return;
@@ -360,6 +364,9 @@ namespace IBSO
 				this.feed_pos_s += chunk.samples.length / 16000.0;
 			}
 
+			if (this.session_recording && chunk.samples.length > 0) {
+				this.session_chunk_n.append_val(chunk.samples.length);
+			}
 			this.stream.accept_waveform(16000, chunk.samples);
 			while (this.recognizer.is_ready(this.stream) == 1) {
 				this.recognizer.decode(this.stream);
@@ -448,6 +455,7 @@ namespace IBSO
 				return;
 			}
 			var pcm = this.session_pcm.steal();
+			var chunk_ns = this.session_chunk_n.steal();
 			var text = this.session_text;
 			var started = this.session_started;
 			this.session_text = "";
@@ -457,7 +465,7 @@ namespace IBSO
 				return;
 			}
 			GLib.Idle.add(() => {
-				DebugRecording.save(text, pcm, started);
+				Debug.Recording.save(text, pcm, chunk_ns, started);
 				return GLib.Source.REMOVE;
 			});
 		}
@@ -534,94 +542,6 @@ namespace IBSO
 			this.last_text = "";
 			/* Keep the queue so the worker can flush session_pcm, then reset. */
 			this.audio_queue.push(new PcmChunk.for_session_end());
-		}
-
-		/**
-		 * Play a debug ''.wav'' on the speakers and feed the same PCM into the
-		 * recognizer in lockstep (one GStreamer clock via tee). Emits
-		 * {@link partial} / {@link endpoint} while playing, then
-		 * {@link replay_finished}. Does not write debug recordings.
-		 *
-		 * @param path absolute path to a mono 16 kHz WAV
-		 */
-		public void replay_wav(string path)
-		{
-			this.stop_replay();
-			this.file_feeding = true;
-			this.notify_replay_finished = true;
-			this.feed_pos_s = 0.0;
-			this.last_text = "";
-			this.audio_queue.push(new PcmChunk.for_reset());
-
-			try {
-				this.replay_pipeline = (Gst.Pipeline) Gst.parse_launch(
-					"filesrc name=src ! wavparse ! audioconvert ! audioresample ! "
-					+ "audio/x-raw,format=F32LE,channels=1,rate=16000 ! tee name=t "
-					+ "t. ! queue ! autoaudiosink sync=true "
-					+ "t. ! queue max-size-buffers=0 max-size-time=0 max-size-bytes=0 ! "
-					+ "appsink name=sink emit-signals=true max-buffers=200 drop=false sync=true"
-				);
-			} catch (GLib.Error err) {
-				GLib.warning("replay pipeline: %s", err.message);
-				this.file_feeding = false;
-				this.notify_replay_finished = false;
-				return;
-			}
-			this.replay_pipeline.get_by_name("src").set("location", path);
-			var sink = (Gst.App.Sink) this.replay_pipeline.get_by_name("sink");
-			sink.new_sample.connect(() => {
-				return this.on_new_sample(sink);
-			});
-			var bus = this.replay_pipeline.get_bus();
-			bus.add_signal_watch();
-			this.replay_bus_id = bus.message.connect((b, message) => {
-				if (message.type != Gst.MessageType.EOS
-						&& message.type != Gst.MessageType.ERROR) {
-					return;
-				}
-				if (message.type == Gst.MessageType.ERROR) {
-					GLib.Error err;
-					string dbg;
-					message.parse_error(out err, out dbg);
-					GLib.warning("replay: %s (%s)", err.message, dbg);
-				}
-				if (this.replay_pipeline != null) {
-					var b2 = this.replay_pipeline.get_bus();
-					if (this.replay_bus_id != 0) {
-						b2.disconnect(this.replay_bus_id);
-						this.replay_bus_id = 0;
-					}
-					b2.remove_signal_watch();
-					this.replay_pipeline.set_state(Gst.State.NULL);
-					this.replay_pipeline = null;
-				}
-				if (this.file_feeding) {
-					this.audio_queue.push(new PcmChunk.for_flush());
-				}
-			});
-			this.replay_pipeline.set_state(Gst.State.PLAYING);
-		}
-
-		/**
-		 * Cancel an in-progress {@link replay_wav} (no {@link replay_finished}).
-		 */
-		public void stop_replay()
-		{
-			this.notify_replay_finished = false;
-			if (this.replay_pipeline != null) {
-				var bus = this.replay_pipeline.get_bus();
-				if (this.replay_bus_id != 0) {
-					bus.disconnect(this.replay_bus_id);
-					this.replay_bus_id = 0;
-				}
-				bus.remove_signal_watch();
-				this.replay_pipeline.set_state(Gst.State.NULL);
-				this.replay_pipeline = null;
-			}
-			if (this.file_feeding) {
-				this.file_feeding = false;
-				this.audio_queue.push(new PcmChunk.for_reset());
-			}
 		}
 
 		/**

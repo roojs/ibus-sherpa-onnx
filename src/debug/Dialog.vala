@@ -28,6 +28,7 @@ namespace IBSO.Debug
 		private Gtk.TextBuffer output_buf;
 		private Gtk.TextView output_view;
 		private Gtk.Button replay_btn;
+		private Gtk.Button stop_btn;
 		private Gtk.Label match_label;
 		private Gtk.Box stars_box;
 		private Gtk.Box out_star_row;
@@ -35,6 +36,7 @@ namespace IBSO.Debug
 		private Stars output_stars;
 		private HistoryItem? current;
 		private IBSO.Transcriber? transcriber;
+		private Replay? replay;
 		private bool replaying;
 		/** Committed endpoint texts for this Replay (newline between). */
 		private string output_commits = "";
@@ -74,6 +76,16 @@ namespace IBSO.Debug
 				sensitive = false
 			};
 			this.replay_btn.clicked.connect(this.on_replay);
+			this.stop_btn = new Gtk.Button.with_label("Stop") {
+				halign = Gtk.Align.CENTER,
+				sensitive = false
+			};
+			this.stop_btn.clicked.connect(this.on_stop);
+			var replay_row = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 8) {
+				halign = Gtk.Align.CENTER
+			};
+			replay_row.append(this.replay_btn);
+			replay_row.append(this.stop_btn);
 
 			this.output_buf = new Gtk.TextBuffer(null);
 			this.output_view = new Gtk.TextView.with_buffer(this.output_buf) {
@@ -133,7 +145,7 @@ namespace IBSO.Debug
 				margin_bottom = 12
 			};
 			right.append(original_frame);
-			right.append(this.replay_btn);
+			right.append(replay_row);
 			right.append(output_frame);
 			right.append(this.stars_box);
 
@@ -149,8 +161,9 @@ namespace IBSO.Debug
 
 			this.close_request.connect(() => {
 				this.replaying = false;
-				if (this.transcriber != null) {
-					this.transcriber.stop_replay();
+				this.stop_btn.sensitive = false;
+				if (this.replay != null) {
+					this.replay.stop();
 				}
 				return false;
 			});
@@ -160,8 +173,8 @@ namespace IBSO.Debug
 		{
 			this.replaying = false;
 			this.output_commits = "";
-			if (this.transcriber != null) {
-				this.transcriber.stop_replay();
+			if (this.replay != null) {
+				this.replay.stop();
 			}
 			this.current = item;
 			this.stars_box.visible = false;
@@ -173,6 +186,7 @@ namespace IBSO.Debug
 			this.original_stars.fill(0);
 			this.output_stars.fill(0);
 			this.replay_btn.sensitive = false;
+			this.stop_btn.sensitive = false;
 			if (item == null) {
 				return;
 			}
@@ -180,6 +194,24 @@ namespace IBSO.Debug
 				GLib.FileTest.IS_REGULAR);
 			this.original_buf.set_text(item.text(), -1);
 			this.output_buf.set_text(item.output(), -1);
+		}
+
+		private void on_stop()
+		{
+			if (!this.replaying) {
+				return;
+			}
+			this.replaying = false;
+			this.stop_btn.sensitive = false;
+			if (this.current != null) {
+				GLib.debug("#replay stopped stem=%s t=%.3f", this.current.stem,
+					this.transcriber != null ? this.transcriber.feed_pos_s : 0.0);
+			}
+			if (this.replay != null) {
+				this.replay.stop();
+			}
+			this.replay_btn.sensitive = this.current != null
+				&& GLib.FileUtils.test(this.current.stem + ".wav", GLib.FileTest.IS_REGULAR);
 		}
 
 		private void on_replay()
@@ -197,14 +229,18 @@ namespace IBSO.Debug
 			this.current.clear_output_rating();
 			this.replaying = true;
 			this.replay_btn.sensitive = false;
+			this.stop_btn.sensitive = true;
 
 			this.ensure_transcriber();
-			if (this.transcriber == null) {
+			if (this.transcriber == null || this.replay == null) {
 				this.replaying = false;
 				this.replay_btn.sensitive = true;
+				this.stop_btn.sensitive = false;
 				return;
 			}
-			this.transcriber.replay_wav(this.current.stem + ".wav");
+			GLib.debug("#replay start stem=%s wav=%s model=%s",
+				this.current.stem, this.current.stem + ".wav", this.transcriber.model_dir);
+			this.replay.start(this.current.stem + ".wav");
 		}
 
 		/**
@@ -251,12 +287,15 @@ namespace IBSO.Debug
 			} catch (GLib.Error err) {
 				GLib.warning("debug replay load: %s", err.message);
 				this.transcriber = null;
+				this.replay = null;
 				return;
 			}
+			this.replay = new Replay(this.transcriber);
 			this.transcriber.partial.connect((text) => {
 				if (!this.replaying) {
 					return;
 				}
+				GLib.debug("#partial t=%.3f text=%s", this.transcriber.feed_pos_s, text);
 				if (this.output_commits == "") {
 					this.output_buf.set_text(text, -1);
 				} else {
@@ -271,6 +310,7 @@ namespace IBSO.Debug
 				if (!this.replaying || text.strip() == "") {
 					return;
 				}
+				GLib.debug("#endpoint t=%.3f text=%s", this.transcriber.feed_pos_s, text);
 				if (this.output_commits != "") {
 					this.output_commits += "\n";
 				}
@@ -287,6 +327,7 @@ namespace IBSO.Debug
 				}
 				this.replaying = false;
 				this.replay_btn.sensitive = this.current != null;
+				this.stop_btn.sensitive = false;
 				if (this.current == null) {
 					return;
 				}
@@ -298,6 +339,7 @@ namespace IBSO.Debug
 				var output = this.output_buf.get_text(start, end, false);
 				this.current.write_output(output);
 				var score = RapidFuzz.ratio(this.current.text().strip(), output.strip());
+				GLib.debug("#replay finished stem=%s match=%.0f%%", this.current.stem, score);
 				this.match_label.label = "Match: %.0f%%".printf(score);
 				this.match_label.visible = true;
 				this.out_star_row.visible = score < 100.0;
