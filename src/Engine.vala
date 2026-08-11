@@ -386,6 +386,8 @@ namespace IBSO
 
 		/**
 		 * Endpoint commit from {@link Transcriber} (main loop).
+		 * When voice commands are on, match the last few words to a configured
+		 * phrase (RapidFuzz), strip it, and inject paragraph / line break / stop.
 		 */
 		public void on_endpoint(string text)
 		{
@@ -393,11 +395,100 @@ namespace IBSO
 				return;
 			}
 			this.saw_partial = false;
-			this.commit_text(new IBus.Text.from_string(text + " "));
+
+			var commit = text + " ";
+			var stop = false;
+			if (Engine.config.key_file.get_boolean("general", "voice-commands")) {
+				var paragraph = this.normalize_voice(
+					Engine.config.key_file.get_string("general", "voice-paragraph"));
+				var line_break = this.normalize_voice(
+					Engine.config.key_file.get_string("general", "voice-line-break"));
+				var stop_phrase = this.normalize_voice(
+					Engine.config.key_file.get_string("general", "voice-stop"));
+				var norm = this.normalize_voice(text);
+				string[] words = norm.split(" ");
+				if (words.length > 0 && words[0] != "") {
+					var take = int.min(4, words.length);
+					var candidate_parts = new string[take];
+					for (var i = 0; i < take; i++) {
+						candidate_parts[i] = words[words.length - take + i];
+					}
+					var candidate = string.joinv(" ", candidate_parts);
+					string[] choices = { paragraph, line_break, stop_phrase };
+					double score = 0;
+					var idx = RapidFuzz.best_ratio(candidate, choices, 80.0, out score);
+					GLib.debug("voice candidate=\"%s\" idx=%d score=%.1f", candidate, idx, score);
+					if (idx >= 0) {
+						var strip_n = choices[idx].split(" ").length;
+						string[] raw = text.strip().split(" ");
+						var kept = new GLib.GenericArray<string>();
+						foreach (var w in raw) {
+							if (w != "") {
+								kept.add(w);
+							}
+						}
+						var remainder = "";
+						if (kept.length > strip_n) {
+							var left = new string[kept.length - strip_n];
+							for (var i = 0; i < left.length; i++) {
+								left[i] = kept[i];
+							}
+							remainder = string.joinv(" ", left);
+						}
+						if (idx == 0) {
+							commit = remainder == "" ? "\n\n" : remainder + "\n\n";
+						} else if (idx == 1) {
+							commit = remainder == "" ? "\n" : remainder + "\n";
+						} else {
+							commit = remainder == "" ? "" : remainder + " ";
+							stop = true;
+						}
+					}
+				}
+			}
+
+			if (commit != "") {
+				this.commit_text(new IBus.Text.from_string(commit));
+			}
 			this.hide_preedit_text();
+			if (stop) {
+				this.update_listening(false, true);
+				return;
+			}
 			if (this.transcriber.listening) {
 				this.start_preedit_animation();
 			}
+		}
+
+		/**
+		 * Lowercase, strip punctuation, squeeze spaces, map spoken ''ok'' → ''okay''.
+		 */
+		private string normalize_voice(string text)
+		{
+			var down = text.down();
+			var buf = new GLib.StringBuilder();
+			unichar c;
+			var i = 0;
+			while (down.get_next_char(ref i, out c)) {
+				if (c.isalnum() || c.isspace()) {
+					buf.append_unichar(c);
+				} else {
+					buf.append_c(' ');
+				}
+			}
+			var out_buf = new GLib.StringBuilder();
+			var first = true;
+			foreach (var w in buf.str.split(" ")) {
+				if (w == "") {
+					continue;
+				}
+				if (!first) {
+					out_buf.append_c(' ');
+				}
+				first = false;
+				out_buf.append(w == "ok" ? "okay" : w);
+			}
+			return out_buf.str;
 		}
 
 		/**
