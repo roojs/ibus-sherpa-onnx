@@ -41,22 +41,32 @@ namespace IBSO
 	 */
 	public class Transcriber : GLib.Object
 	{
-		/** Queue item: PCM for the worker, or {@link PcmChunk.for_reset}. */
+		/** Queue item: PCM for the worker, or {@link PcmChunk.for_reset} / flush. */
 		private class PcmChunk
 		{
 			public float[] samples;
 			public bool reset;
+			public bool flush;
 
 			public PcmChunk(owned float[] samples)
 			{
 				this.samples = (owned) samples;
 				this.reset = false;
+				this.flush = false;
 			}
 
 			public PcmChunk.for_reset()
 			{
 				this.samples = {};
 				this.reset = true;
+				this.flush = false;
+			}
+
+			public PcmChunk.for_flush()
+			{
+				this.samples = {};
+				this.reset = false;
+				this.flush = true;
 			}
 		}
 
@@ -75,6 +85,16 @@ namespace IBSO
 		/** True while we muted the default sink for this listen session. */
 		private bool output_mute_held = false;
 
+		/** Worker-only PCM for the current segment when debug-recordings is on. */
+		private GLib.Array<float> segment_pcm = new GLib.Array<float>(false, false, (uint) sizeof(float));
+		private bool segment_recording = false;
+
+		/**
+		 * True while {@link feed_wav} is pushing file PCM (no mic).
+		 * Main sets; worker clears after flush.
+		 */
+		private bool file_feeding = false;
+
 		/** Directory with int8 ONNX + tokens.txt (set before {@link load}). */
 		public string model_dir { get; set; default = ""; }
 
@@ -84,8 +104,8 @@ namespace IBSO
 		/** Catalog language code; English codes skip stream option. */
 		public string language { get; set; default = ""; }
 
-		/** Prefs (''mute-speakers'', …); set at construct. */
-		public Config config { get; construct; }
+		/** Prefs (''mute-speakers'', ''debug-recordings'', …); refreshed on focus. */
+		public Config config { get; set construct; }
 
 		/** Owning engine (IBus or CLI/GTK stub). */
 		public unowned Engine engine { get; construct; }
@@ -234,11 +254,43 @@ namespace IBSO
 				this.hypothesis = "";
 				this.partial_updates = 0;
 				this.segment_start_us = GLib.get_monotonic_time();
+				this.segment_pcm.set_size(0);
+				this.segment_recording = !this.file_feeding
+					&& this.config.key_file.get_boolean("general", "debug-recordings");
 				return;
 			}
 
-			if (!this.listening) {
+			if (chunk.flush) {
+				this.stream.input_finished();
+				while (this.recognizer.is_ready(this.stream) == 1) {
+					this.recognizer.decode(this.stream);
+				}
+				var result = this.recognizer.get_result(this.stream);
+				var commit = result.text != "" ? result.text : this.hypothesis;
+				this.file_feeding = false;
+				GLib.Idle.add(() => {
+					this.last_text = "";
+					this.engine.on_endpoint(commit);
+					this.endpoint(commit);
+					return GLib.Source.REMOVE;
+				});
+				this.recognizer.reset(this.stream);
+				if (this.stream_language != "") {
+					this.stream.set_option("language", this.stream_language);
+				}
+				this.hypothesis = "";
+				this.partial_updates = 0;
+				this.segment_pcm.set_size(0);
+				this.segment_recording = false;
 				return;
+			}
+
+			if (!this.listening && !this.file_feeding) {
+				return;
+			}
+
+			if (this.segment_recording && chunk.samples.length > 0) {
+				this.segment_pcm.append_vals(chunk.samples, chunk.samples.length);
 			}
 
 			this.stream.accept_waveform(16000, chunk.samples);
@@ -252,7 +304,7 @@ namespace IBSO
 				this.partial_updates++;
 				var copy = result.text;
 				GLib.Idle.add(() => {
-					if (!this.listening) {
+					if (!this.listening && !this.file_feeding) {
 						return GLib.Source.REMOVE;
 					}
 					this.last_text = copy;
@@ -262,7 +314,7 @@ namespace IBSO
 				});
 			}
 
-			if (this.recognizer.is_endpoint(this.stream) != 1) {
+			if (this.file_feeding || this.recognizer.is_endpoint(this.stream) != 1) {
 				return;
 			}
 
@@ -274,23 +326,27 @@ namespace IBSO
 				this.hypothesis = "";
 				this.partial_updates = 0;
 				this.segment_start_us = GLib.get_monotonic_time();
+				this.segment_pcm.set_size(0);
+				this.segment_recording = this.config.key_file.get_boolean("general", "debug-recordings");
 				return;
 			}
 
 			var commit = this.hypothesis;
+			var pcm = this.segment_pcm.steal();
 			var wall_s = (GLib.get_monotonic_time() - this.segment_start_us) / 1000000.0;
-			var audio_s = 0.0;
-			if (result.timestamps != null && result.count > 0) {
-				audio_s = Math.fmax(0.0, result.timestamps[result.count - 1] - result.timestamps[0]);
-			}
-			var tokens = (int) result.count;
 			var partials = this.partial_updates;
 			GLib.Idle.add(() => {
+				if (pcm.length > 0) {
+					DebugRecording.save(commit, pcm);
+				}
 				if (!this.listening) {
 					return GLib.Source.REMOVE;
 				}
-				this.last_token_count = tokens;
-				this.last_audio_s = audio_s;
+				this.last_token_count = (int) result.count;
+				this.last_audio_s = 0.0;
+				if (result.timestamps != null && result.count > 0) {
+					this.last_audio_s = Math.fmax(0.0, result.timestamps[result.count - 1] - result.timestamps[0]);
+				}
 				this.last_wall_s = wall_s;
 				this.last_partial_count = partials;
 				this.last_text = "";
@@ -306,6 +362,7 @@ namespace IBSO
 			this.hypothesis = "";
 			this.partial_updates = 0;
 			this.segment_start_us = GLib.get_monotonic_time();
+			this.segment_recording = this.config.key_file.get_boolean("general", "debug-recordings");
 		}
 
 		/**
@@ -354,6 +411,8 @@ namespace IBSO
 			this.audio_queue = new GLib.AsyncQueue<PcmChunk>();
 			this.audio_queue.push(new PcmChunk.for_reset());
 			this.last_text = "";
+			this.segment_pcm.set_size(0);
+			this.segment_recording = this.config.key_file.get_boolean("general", "debug-recordings");
 			this.listening = true;
 			if (this.config.key_file.get_boolean("general", "mute-speakers")) {
 				this.output_mute(true);
@@ -373,6 +432,34 @@ namespace IBSO
 			this.audio_queue = new GLib.AsyncQueue<PcmChunk>();
 			this.audio_queue.push(new PcmChunk.for_reset());
 			this.last_text = "";
+			this.segment_pcm.set_size(0);
+			this.segment_recording = false;
+		}
+
+		/**
+		 * Push float mono PCM through the recognizer (no mic). Emits {@link partial}
+		 * / {@link endpoint} on the main loop. Does not write debug recordings.
+		 *
+		 * @param samples 16 kHz float PCM (e.g. from a debug recording ''.wav'')
+		 */
+		public void feed_wav(float[] samples)
+		{
+			this.file_feeding = true;
+			this.last_text = "";
+			this.audio_queue = new GLib.AsyncQueue<PcmChunk>();
+			this.audio_queue.push(new PcmChunk.for_reset());
+			var chunk_n = 3200;
+			var offset = 0;
+			while (offset < samples.length) {
+				var n = int.min(chunk_n, samples.length - offset);
+				var slice = new float[n];
+				for (var i = 0; i < n; i++) {
+					slice[i] = samples[offset + i];
+				}
+				this.audio_queue.push(new PcmChunk((owned) slice));
+				offset += n;
+			}
+			this.audio_queue.push(new PcmChunk.for_flush());
 		}
 
 		/**

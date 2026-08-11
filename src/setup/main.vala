@@ -7,6 +7,7 @@
  */
 int main(string[] args)
 {
+	Gst.init(ref args);
 	var app = new Adw.Application(
 		"org.roojs.ibus-setup-sherpa-onnx",
 		GLib.ApplicationFlags.DEFAULT_FLAGS

@@ -345,6 +345,7 @@ namespace IBSO
 				return;
 			}
 			if (this.transcriber != null && this.transcriber.pack == pack) {
+				this.transcriber.config = Engine.config;
 				return;
 			}
 

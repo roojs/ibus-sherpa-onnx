@@ -19,10 +19,8 @@
 namespace IBSO.Setup
 {
 	/**
-	 * Single-page preferences: Listening and Select model (language combo +
-	 * pack radios; packs not for the language are hidden). Standalone
-	 * {@link Adw.Window} hosting an {@link Adw.PreferencesPage} — RooTerm
-	 * ''Dialog.Preferences'' shell.
+	 * Preferences: General (Listening + Select model) and Debug tabs.
+	 * Standalone {@link Adw.Window} — RooTerm ''Dialog.Preferences'' shell.
 	 *
 	 * Close saves settings and asks {@link ModelDownload} to link or fetch.
 	 * While fetching, the prefs page is replaced by the download status view
@@ -38,6 +36,7 @@ namespace IBSO.Setup
 		private ModelDownload download;
 		private Gtk.Stack stack;
 		private Gtk.Button close_btn;
+		private Adw.ActionRow browse_row;
 
 		public Preferences(Gtk.Application app)
 		{
@@ -51,9 +50,12 @@ namespace IBSO.Setup
 			this.config = Config.load();
 			this.download = new ModelDownload(this.models);
 
-			var page = new Adw.PreferencesPage();
+			var general = new Adw.PreferencesPage() {
+				title = "General",
+				icon_name = "preferences-system-symbolic"
+			};
 			var listening = new Adw.PreferencesGroup() { title = "Listening" };
-			page.add(listening);
+			general.add(listening);
 			this.add("hotkey", new RowKeySelect(this.config, "hotkey", "Toggle hotkey",
 				"Click, then press a key combination"), listening);
 			this.add("notifications", new RowSwitch(this.config, "notifications",
@@ -67,7 +69,7 @@ namespace IBSO.Setup
 				title = "Select model",
 				description = "Closing installs or switches to the selection"
 			};
-			page.add(models);
+			general.add(models);
 			var language = new RowComboLanguage(this.config, this.models);
 			this.rows.set("language", language);
 			models.add(language.row);
@@ -80,11 +82,46 @@ namespace IBSO.Setup
 				model.fill();
 			});
 
+			var debug_page = new Adw.PreferencesPage() {
+				title = "Debug",
+				icon_name = "applications-engineering-symbolic"
+			};
+			var debug_group = new Adw.PreferencesGroup() {
+				title = "Debug recordings",
+				description = "Save utterance audio and text under ~/.cache/ibus-sherpa-onnx/debug/"
+			};
+			debug_page.add(debug_group);
+			var debug_sw = new RowSwitch(this.config, "debug-recordings",
+				"Save debug recordings", "Record each committed utterance for later review");
+			this.add("debug-recordings", debug_sw, debug_group);
+
+			this.browse_row = new Adw.ActionRow() {
+				title = "Browse recordings"
+			};
+			var browse_btn = new Gtk.Button.with_label("Browse…") {
+				valign = Gtk.Align.CENTER
+			};
+			browse_btn.clicked.connect(() => {
+				var win = new IBSO.Debug.Dialog(this);
+				win.present();
+			});
+			this.browse_row.add_suffix(browse_btn);
+			this.browse_row.set_activatable_widget(browse_btn);
+			debug_group.add(this.browse_row);
+			((RowSwitch) this.rows.get("debug-recordings")).sw.notify["active"].connect(() => {
+				this.browse_row.visible =
+					((RowSwitch) this.rows.get("debug-recordings")).sw.active;
+			});
+
+			var pages = new Adw.ViewStack();
+			pages.add_titled(general, "general", "General");
+			pages.add_titled(debug_page, "debug", "Debug");
+
 			this.stack = new Gtk.Stack() {
 				vhomogeneous = false,
 				hhomogeneous = false
 			};
-			this.stack.add_named(page, "prefs");
+			this.stack.add_named(pages, "prefs");
 			this.stack.add_named(this.download, "download");
 			this.stack.visible_child_name = "prefs";
 
@@ -94,7 +131,11 @@ namespace IBSO.Setup
 			});
 			var header = new Adw.HeaderBar() {
 				show_start_title_buttons = false,
-				show_end_title_buttons = false
+				show_end_title_buttons = false,
+				title_widget = new Adw.ViewSwitcher() {
+					stack = pages,
+					policy = Adw.ViewSwitcherPolicy.WIDE
+				}
 			};
 			header.pack_end(this.close_btn);
 			var toolbar = new Adw.ToolbarView();
@@ -172,6 +213,8 @@ namespace IBSO.Setup
 				row.config = this.config;
 				row.fill();
 			}
+			this.browse_row.visible =
+				((RowSwitch) this.rows.get("debug-recordings")).sw.active;
 		}
 
 		private bool on_close_request()
