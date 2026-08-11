@@ -62,6 +62,8 @@ namespace IBSO.Setup
 	 */
 	public class Application : Adw.Application
 	{
+		public Config config;
+
 		public Application()
 		{
 			GLib.Object(
@@ -76,6 +78,9 @@ namespace IBSO.Setup
 		public override void activate()
 		{
 			base.activate();
+			if (this.config == null) {
+				this.config = Config.load();
+			}
 			var win = this.active_window as Gtk.Window;
 			if (win == null) {
 				win = new Preferences(this);

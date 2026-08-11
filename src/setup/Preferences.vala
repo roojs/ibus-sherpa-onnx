@@ -43,7 +43,7 @@ namespace IBSO.Setup
 		private IBus.Bus bus;
 		private bool engine_ready = false;
 
-		public Preferences(Gtk.Application app)
+		public Preferences(Application app)
 		{
 			GLib.Object(
 				application: app,
@@ -52,7 +52,7 @@ namespace IBSO.Setup
 				default_width: 720,
 				default_height: 720
 			);
-			this.config = Config.load();
+			this.config = app.config;
 			this.download = new ModelDownload(this.models);
 
 			var general_page = new Adw.PreferencesPage() {
@@ -99,13 +99,15 @@ namespace IBSO.Setup
 				description = "Spoken phrases (defaults use okay " + id + ")"
 			};
 			voice_page.add(voice);
+			this.add("voice-commands", new RowSwitch(this.config, "voice-commands",
+				"Voice commands", "Match spoken phrases while dictating"), voice);
 			this.add("voice-paragraph",
 				new RowMicText(this, this.config, "voice-paragraph", "Paragraph"), voice);
 			this.add("voice-line-break",
 				new RowMicText(this, this.config, "voice-line-break", "Line break"), voice);
 			this.add("voice-stop",
 				new RowMicText(this, this.config, "voice-stop", "Stop"), voice);
-
+			 
 			this.pages = new Adw.ViewStack();
 			this.pages.add_titled_with_icon(general_page, "general", "General",
 				"preferences-system-symbolic");
@@ -226,11 +228,9 @@ namespace IBSO.Setup
 			this._banner.revealed = true;
 		}
 
-		/** Reload rows from disk; language combo follows the active IBus engine. */
+		/** Refresh rows from config; language combo follows the active IBus engine. */
 		public void fill()
 		{
-			this.config = Config.load();
-
 			var id = "";
 			this.engine_ready = false;
 			if (this.bus.is_connected()) {

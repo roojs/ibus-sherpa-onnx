@@ -46,6 +46,11 @@ namespace IBSO
 		 */
 		public GLib.KeyFile packs;
 
+		/**
+		 * Fired after ''settings.ini'' is written by {@link save}.
+		 */
+		public signal void changed();
+
 		public Config()
 		{
 			var dir = GLib.Path.build_filename(GLib.Environment.get_user_config_dir(),
@@ -75,6 +80,7 @@ namespace IBSO
 				config.key_file.set_boolean("general", "notifications", false);
 				config.key_file.set_boolean("general", "preedit-animation", true);
 				config.key_file.set_boolean("general", "mute-speakers", true);
+				config.key_file.set_boolean("general", "voice-commands", true);
 				config.key_file.set_string("general", "language", "en");
 			}
 			if (!config.key_file.has_key("general", "hotkey")) {
@@ -88,6 +94,9 @@ namespace IBSO
 			}
 			if (!config.key_file.has_key("general", "mute-speakers")) {
 				config.key_file.set_boolean("general", "mute-speakers", true);
+			}
+			if (!config.key_file.has_key("general", "voice-commands")) {
+				config.key_file.set_boolean("general", "voice-commands", true);
 			}
 			if (!config.key_file.has_key("general", "language")) {
 				config.key_file.set_string("general", "language", "en");
@@ -131,6 +140,7 @@ namespace IBSO
 			} catch (GLib.Error err) {
 				GLib.warning("save settings: %s", err.message);
 			}
+			this.changed();
 		}
 
 		/** Write ''packs.ini''. */

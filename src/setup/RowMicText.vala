@@ -63,6 +63,10 @@ namespace IBSO.Setup
 		{
 			base(config, key, title, "");
 			this.prefs = prefs;
+			this.config.changed.connect(() => {
+				this.row.visible = this.config.key_file.get_boolean("general", "voice-commands");
+			});
+			this.row.visible = this.config.key_file.get_boolean("general", "voice-commands");
 			this.entry = new Gtk.Entry() {
 				valign = Gtk.Align.CENTER,
 				sensitive = false,
@@ -225,6 +229,7 @@ namespace IBSO.Setup
 			} catch (GLib.KeyFileError err) {
 				this.entry.text = "";
 			}
+			this.row.visible = this.config.key_file.get_boolean("general", "voice-commands");
 			this.loading = false;
 		}
 	}
