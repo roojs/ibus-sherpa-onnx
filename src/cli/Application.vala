@@ -284,6 +284,10 @@ namespace IBSO.Cli
 			}
 
 			var n_all = data_n / 2;
+			var live = IBSO.Debug.Recording.load_pcm(opt_wav);
+			if (live != null) {
+				n_all = live.length;
+			}
 			var i0 = (int) Math.floor(opt_from * 16000.0);
 			var i1 = opt_to < 0.0 ? n_all : (int) Math.ceil(opt_to * 16000.0);
 			if (i0 > n_all) {
@@ -294,17 +298,24 @@ namespace IBSO.Cli
 			}
 			var n = i1 - i0;
 			float[] pcm;
-			try {
-				if (i0 > 0) {
-					input.skip(i0 * 2);
-				}
+			if (live != null) {
 				pcm = new float[n];
 				for (var i = 0; i < n; i++) {
-					pcm[i] = input.read_int16() / 32768.0f;
+					pcm[i] = live[i0 + i];
 				}
-			} catch (GLib.Error err) {
-				GLib.critical("%s", err.message);
-				return 1;
+			} else {
+				try {
+					if (i0 > 0) {
+						input.skip(i0 * 2);
+					}
+					pcm = new float[n];
+					for (var i = 0; i < n; i++) {
+						pcm[i] = input.read_int16() / 32768.0f;
+					}
+				} catch (GLib.Error err) {
+					GLib.critical("%s", err.message);
+					return 1;
+				}
 			}
 
 			var chunk_n = int.max(1, (int) (16000.0 * opt_chunk_ms / 1000.0));
@@ -313,9 +324,10 @@ namespace IBSO.Cli
 				feed_chunks = IBSO.Debug.Recording.slice_chunks(feed_chunks, i0, i1);
 			}
 			var file_end = opt_from + pcm.length / 16000.0;
-			GLib.debug("#wav %s from=%.3f to=%.3f chunk_ms=%d live_chunks=%s fast=%s samples=%d language=%s model=%s",
+			GLib.debug("#wav %s from=%.3f to=%.3f chunk_ms=%d live_chunks=%s f32=%s fast=%s samples=%d language=%s model=%s",
 				opt_wav, opt_from, file_end, opt_chunk_ms,
 				feed_chunks != null ? feed_chunks.length.to_string() : "none",
+				(live != null).to_string(),
 				opt_fast_transcribe.to_string(), pcm.length, language, model_dir);
 
 			var replay = new IBSO.Debug.Replay(transcriber);
@@ -376,7 +388,7 @@ namespace IBSO.Cli
 				return 0;
 			}
 
-			/* Default: same GStreamer path as Browse Replay. */
+			/* Default: same GStreamer path as Browse Replay (ASR uses pcm / ''.f32''). */
 			var path = opt_wav;
 			string? tmp = null;
 			if (opt_from > 0.0 || opt_to >= 0.0) {
@@ -391,7 +403,7 @@ namespace IBSO.Cli
 				path = tmp;
 			}
 			GLib.debug("#replay %s", path);
-			replay.start(path, feed_chunks);
+			replay.start(path, feed_chunks, pcm);
 			loop.run();
 			if (tmp != null) {
 				GLib.FileUtils.unlink(tmp);

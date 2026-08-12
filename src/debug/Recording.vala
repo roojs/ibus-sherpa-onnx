@@ -22,9 +22,9 @@ namespace IBSO.Debug
 	 * Write one debug listen session under
 	 * ''~/.cache/ibus-sherpa-onnx/debug/YYYY-MM-DD/''.
 	 *
-	 * Basename ''HHMMSS'' from listen start. Audio is mono 16 kHz S16LE WAV
-	 * for the whole listen (including pauses); text is UTF-8; ''.chunks'' is
-	 * little-endian int32 sample counts per live ''accept_waveform''.
+	 * Basename ''HHMMSS'' from listen start. ''.wav'' is mono 16 kHz S16LE for
+	 * speakers; ''.f32'' is the live float ''accept_waveform'' PCM (Replay ASR);
+	 * ''.chunks'' is LE int32 sample counts per accept; ''.txt'' is UTF-8.
 	 */
 	public class Recording : GLib.Object
 	{
@@ -72,12 +72,21 @@ namespace IBSO.Debug
 				GLib.FileUtils.unlink(stem + ".txt");
 				return;
 			}
+			/* Same floats the worker passed to accept_waveform (not S16 round-trip). */
+			var f32 = GLib.FileStream.open(stem + ".f32", "wb");
+			if (f32 == null) {
+				GLib.warning("debug recording f32: open failed");
+			} else {
+				f32.write((uint8[]) samples);
+			}
 			var chunks = GLib.FileStream.open(stem + ".chunks", "wb");
 			if (chunks == null) {
 				GLib.warning("debug recording chunks: open failed");
-			} else {
-				/* fwrite(buf, sizeof(int), length) — cast keeps int count as length. */
-				chunks.write((uint8[]) chunk_ns, sizeof(int));
+			} else if (chunk_ns.length > 0) {
+				/* FileStream.write → fwrite(ptr, size, nmemb). Cast int[]→uint8[]
+				 * sets nmemb to byte length; size must stay 1 (not sizeof(int)),
+				 * or the file is 4× too long and the tail is heap garbage. */
+				chunks.write((uint8[]) chunk_ns);
 			}
 		}
 
@@ -89,12 +98,9 @@ namespace IBSO.Debug
 		 */
 		public static int[]? load_chunks(string wav_path)
 		{
-			string chunks_path;
-			if (wav_path.has_suffix(".wav")) {
-				chunks_path = wav_path.slice(0, wav_path.length - 4) + ".chunks";
-			} else {
-				chunks_path = wav_path + ".chunks";
-			}
+			var chunks_path = wav_path.has_suffix(".wav")
+				? wav_path.slice(0, wav_path.length - 4) + ".chunks"
+				: wav_path + ".chunks";
 			uint8[] data;
 			try {
 				GLib.FileUtils.get_data(chunks_path, out data);
@@ -109,6 +115,33 @@ namespace IBSO.Debug
 			var chunk_ns = new int[n];
 			GLib.Memory.copy((void*) chunk_ns, data, data.length);
 			return chunk_ns;
+		}
+
+		/**
+		 * Load live float PCM from a sibling ''.f32'' (same samples as accept_waveform).
+		 *
+		 * @param wav_path path ending in ''.wav'' (or a stem)
+		 * @return float mono 16 kHz, or null if missing / invalid
+		 */
+		public static float[]? load_pcm(string wav_path)
+		{
+			var f32_path = wav_path.has_suffix(".wav")
+				? wav_path.slice(0, wav_path.length - 4) + ".f32"
+				: wav_path + ".f32";
+			uint8[] data;
+			try {
+				GLib.FileUtils.get_data(f32_path, out data);
+			} catch (GLib.Error err) {
+				return null;
+			}
+			if (data.length == 0 || data.length % (int) sizeof(float) != 0) {
+				GLib.warning("debug f32 invalid: %s (%d bytes)", f32_path, data.length);
+				return null;
+			}
+			var n = data.length / (int) sizeof(float);
+			var samples = new float[n];
+			GLib.Memory.copy((void*) samples, data, data.length);
+			return samples;
 		}
 
 		/**

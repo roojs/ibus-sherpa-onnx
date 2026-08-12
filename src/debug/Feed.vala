@@ -20,6 +20,12 @@ namespace IBSO.Debug
 {
 	/**
 	 * Reassemble appsink PCM into saved live ''accept_waveform'' sizes.
+	 *
+	 * Pending PCM lives in a {@link GLib.Array} (bulk ''append_vals'' /
+	 * ''g_array_remove_range''). Vala’s ''remove_range'' returns an owned
+	 * ''G[]'' that is wrong for ''float'' — peel with ''Memory.copy'' +
+	 * ''_remove_range'' instead. Gee is not used here (no bulk front peel
+	 * for float, and the engine/CLI targets do not link gee-0.8).
 	 */
 	public class Feed : GLib.Object
 	{
@@ -48,25 +54,21 @@ namespace IBSO.Debug
 		{
 			while (this.index < this.sizes.length) {
 				var need = this.sizes[this.index];
-				if (need < 1) {
-					this.index++;
-					continue;
-				}
 				if (this.pending.length < need) {
 					break;
 				}
-				var slice = new float[need];
-				GLib.Memory.copy((void*) slice, this.pending.data, need * sizeof(float));
-				this.pending.remove_range(0, need);
 				this.index++;
+				var slice = new float[need];
+				Memory.copy(slice, this.pending.data, need * sizeof(float));
+				this.pending._remove_range(0, need);
 				return slice;
 			}
 			if (this.eos && this.pending.length > 0) {
-				var n = (int) this.pending.length;
-				var left = new float[n];
-				GLib.Memory.copy((void*) left, this.pending.data, n * sizeof(float));
-				this.pending.set_size(0);
-				return left;
+				var n = this.pending.length;
+				var slice = new float[n];
+				Memory.copy(slice, this.pending.data, n * sizeof(float));
+				this.pending._remove_range(0, n);
+				return slice;
 			}
 			return null;
 		}

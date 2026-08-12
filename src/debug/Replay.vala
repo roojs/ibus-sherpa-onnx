@@ -19,10 +19,11 @@
 namespace IBSO.Debug
 {
 	/**
-	 * Synced file→speaker→ASR Replay for a debug ''.wav'' (optional ''.chunks'').
+	 * Synced file→speaker→ASR Replay for a debug ''.wav'' (optional ''.chunks'' / ''.f32'').
 	 *
 	 * Owns the GStreamer tee pipeline and {@link Feed}; pushes PCM onto
-	 * {@link IBSO.Transcriber.audio_queue}.
+	 * {@link IBSO.Transcriber.audio_queue}. Speaker plays ''.wav''; ASR prefers
+	 * live ''.f32'' samples (same floats as accept_waveform) paced by appsink.
 	 *
 	 * == Example ==
 	 *
@@ -40,6 +41,9 @@ namespace IBSO.Debug
 		private Gst.Pipeline? pipeline = null;
 		private ulong bus_id = 0;
 		private Feed? feed = null;
+		/** Live accept_waveform floats when ''.f32'' exists (or passed in). */
+		private float[]? live_pcm = null;
+		private int live_off = 0;
 
 		public Replay(IBSO.Transcriber transcriber)
 		{
@@ -49,16 +53,23 @@ namespace IBSO.Debug
 		/**
 		 * Play ''path'' and feed ASR in lockstep. When ''.chunks'' exists
 		 * (or ''chunk_ns'' is passed), accept sizes match the live session.
+		 * When ''.f32'' exists (or ''pcm'' is passed), ASR uses those samples
+		 * instead of GStreamer-decoded WAV.
 		 *
-		 * @param path absolute mono 16 kHz WAV
+		 * @param path absolute mono 16 kHz WAV (speakers)
 		 * @param chunk_ns optional live sizes; null → load sibling ''.chunks''
+		 * @param pcm optional live floats; null → load sibling ''.f32''
 		 */
-		public void start(string path, int[]? chunk_ns = null)
+		public void start(string path, int[]? chunk_ns = null, float[]? pcm = null)
 		{
 			this.stop();
 			var sizes = chunk_ns ?? Recording.load_chunks(path);
 			this.feed = sizes != null && sizes.length > 0 ? new Feed(sizes) : null;
-			GLib.debug("#replay path=%s chunks=%d", path, sizes != null ? sizes.length : 0);
+			this.live_pcm = pcm ?? Recording.load_pcm(path);
+			this.live_off = 0;
+			GLib.debug("#replay path=%s chunks=%d f32=%d", path,
+				sizes != null ? sizes.length : 0,
+				this.live_pcm != null ? this.live_pcm.length : 0);
 			this.transcriber.file_feeding = true;
 			this.transcriber.notify_replay_finished = true;
 			this.transcriber.feed_pos_s = 0.0;
@@ -78,6 +89,7 @@ namespace IBSO.Debug
 				this.transcriber.file_feeding = false;
 				this.transcriber.notify_replay_finished = false;
 				this.feed = null;
+				this.live_pcm = null;
 				return;
 			}
 			this.pipeline.get_by_name("src").set("location", path);
@@ -99,8 +111,19 @@ namespace IBSO.Debug
 					return Gst.FlowReturn.ERROR;
 				}
 				if (map.size >= sizeof(float)) {
-					var samples = new float[map.size / sizeof(float)];
-					GLib.Memory.copy((void*) samples, map.data, map.size);
+					var n = (int) (map.size / sizeof(float));
+					float[] samples;
+					if (this.live_pcm != null) {
+						n = int.min(n, this.live_pcm.length - this.live_off);
+						samples = new float[n];
+						for (var i = 0; i < n; i++) {
+							samples[i] = this.live_pcm[this.live_off + i];
+						}
+						this.live_off += n;
+					} else {
+						samples = new float[n];
+						GLib.Memory.copy((void*) samples, map.data, map.size);
+					}
 					if (this.feed != null) {
 						this.feed.push(samples);
 						float[]? slice;
@@ -131,6 +154,19 @@ namespace IBSO.Debug
 				}
 				this.drop_pipeline();
 				if (this.transcriber.file_feeding) {
+					if (this.live_pcm != null && this.live_off < this.live_pcm.length) {
+						var rest = new float[this.live_pcm.length - this.live_off];
+						for (var i = 0; i < rest.length; i++) {
+							rest[i] = this.live_pcm[this.live_off + i];
+						}
+						this.live_off = this.live_pcm.length;
+						if (this.feed != null) {
+							this.feed.push(rest);
+						} else {
+							this.transcriber.audio_queue.push(
+								new IBSO.Transcriber.PcmChunk((owned) rest));
+						}
+					}
 					if (this.feed != null) {
 						this.feed.finish();
 						float[]? slice;
@@ -140,6 +176,7 @@ namespace IBSO.Debug
 						}
 						this.feed = null;
 					}
+					this.live_pcm = null;
 					this.transcriber.audio_queue.push(
 						new IBSO.Transcriber.PcmChunk.for_flush());
 				}
@@ -155,6 +192,8 @@ namespace IBSO.Debug
 			this.transcriber.notify_replay_finished = false;
 			this.drop_pipeline();
 			this.feed = null;
+			this.live_pcm = null;
+			this.live_off = 0;
 			if (this.transcriber.file_feeding) {
 				this.transcriber.file_feeding = false;
 				this.transcriber.audio_queue.push(new IBSO.Transcriber.PcmChunk.for_reset());

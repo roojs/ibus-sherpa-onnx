@@ -455,7 +455,15 @@ namespace IBSO
 				return;
 			}
 			var pcm = this.session_pcm.steal();
-			var chunk_ns = this.session_chunk_n.steal();
+			/* Copy by Array.length — steal() has returned a byte-ish length for int[]
+			 * (trailing zeros / garbage ints in ''.chunks''). */
+			var n_chunks = (int) this.session_chunk_n.length;
+			var chunk_ns = new int[n_chunks];
+			if (n_chunks > 0) {
+				GLib.Memory.copy((void*) chunk_ns, this.session_chunk_n.data,
+					n_chunks * sizeof(int));
+			}
+			this.session_chunk_n.set_size(0);
 			var text = this.session_text;
 			var started = this.session_started;
 			this.session_text = "";
