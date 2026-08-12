@@ -51,30 +51,37 @@ namespace IBSO.Debug
 		}
 
 		/**
-		 * Play ''path'' and feed ASR in lockstep. When ''.chunks'' exists
-		 * (or ''chunk_ns'' is passed), accept sizes match the live session.
-		 * When ''.f32'' exists (or ''pcm'' is passed), ASR uses those samples
-		 * instead of GStreamer-decoded WAV.
+		 * Play ''path'' and feed ASR in lockstep. Uses sibling ''.chunks'' /
+		 * ''.f32'' / ''.endpoints'' when present (or the optional overrides).
 		 *
 		 * @param path absolute mono 16 kHz WAV (speakers)
 		 * @param chunk_ns optional live sizes; null → load sibling ''.chunks''
 		 * @param pcm optional live floats; null → load sibling ''.f32''
+		 * @param endpoint_offs optional live cut positions; null → ''.endpoints''
 		 */
-		public void start(string path, int[]? chunk_ns = null, float[]? pcm = null)
+		public void start(
+			string path,
+			int[]? chunk_ns = null,
+			float[]? pcm = null,
+			int[]? endpoint_offs = null
+		)
 		{
 			this.stop();
 			var sizes = chunk_ns ?? Recording.load_chunks(path);
 			this.feed = sizes != null && sizes.length > 0 ? new Feed(sizes) : null;
 			this.live_pcm = pcm ?? Recording.load_pcm(path);
 			this.live_off = 0;
-			GLib.debug("#replay path=%s chunks=%d f32=%d", path,
+			var ends = endpoint_offs ?? Recording.load_endpoints(path);
+			this.transcriber.replay_endpoints = ends;
+			GLib.debug("#replay path=%s chunks=%d f32=%d endpoints=%d", path,
 				sizes != null ? sizes.length : 0,
-				this.live_pcm != null ? this.live_pcm.length : 0);
+				this.live_pcm != null ? this.live_pcm.length : 0,
+				ends != null ? ends.length : 0);
 			this.transcriber.file_feeding = true;
 			this.transcriber.notify_replay_finished = true;
 			this.transcriber.feed_pos_s = 0.0;
 			this.transcriber.last_text = "";
-			this.transcriber.audio_queue.push(new IBSO.Transcriber.PcmChunk.for_reset());
+			this.transcriber.audio_queue.push(new IBSO.PcmChunk.for_reset());
 
 			try {
 				this.pipeline = (Gst.Pipeline) Gst.parse_launch(
@@ -129,11 +136,11 @@ namespace IBSO.Debug
 						float[]? slice;
 						while ((slice = this.feed.take()) != null) {
 							this.transcriber.audio_queue.push(
-								new IBSO.Transcriber.PcmChunk((owned) slice));
+								new IBSO.PcmChunk((owned) slice));
 						}
 					} else {
 						this.transcriber.audio_queue.push(
-							new IBSO.Transcriber.PcmChunk((owned) samples));
+							new IBSO.PcmChunk((owned) samples));
 					}
 				}
 				buffer.unmap(map);
@@ -164,7 +171,7 @@ namespace IBSO.Debug
 							this.feed.push(rest);
 						} else {
 							this.transcriber.audio_queue.push(
-								new IBSO.Transcriber.PcmChunk((owned) rest));
+								new IBSO.PcmChunk((owned) rest));
 						}
 					}
 					if (this.feed != null) {
@@ -172,13 +179,13 @@ namespace IBSO.Debug
 						float[]? slice;
 						while ((slice = this.feed.take()) != null) {
 							this.transcriber.audio_queue.push(
-								new IBSO.Transcriber.PcmChunk((owned) slice));
+								new IBSO.PcmChunk((owned) slice));
 						}
 						this.feed = null;
 					}
 					this.live_pcm = null;
 					this.transcriber.audio_queue.push(
-						new IBSO.Transcriber.PcmChunk.for_flush());
+						new IBSO.PcmChunk.for_flush());
 				}
 			});
 			this.pipeline.set_state(Gst.State.PLAYING);
@@ -194,9 +201,10 @@ namespace IBSO.Debug
 			this.feed = null;
 			this.live_pcm = null;
 			this.live_off = 0;
+			this.transcriber.replay_endpoints = null;
 			if (this.transcriber.file_feeding) {
 				this.transcriber.file_feeding = false;
-				this.transcriber.audio_queue.push(new IBSO.Transcriber.PcmChunk.for_reset());
+				this.transcriber.audio_queue.push(new IBSO.PcmChunk.for_reset());
 			}
 		}
 

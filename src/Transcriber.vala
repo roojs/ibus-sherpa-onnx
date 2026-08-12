@@ -41,48 +41,6 @@ namespace IBSO
 	 */
 	public class Transcriber : GLib.Object
 	{
-		/** Queue item: PCM for the worker, or {@link PcmChunk.for_reset} / flush. */
-		public class PcmChunk
-		{
-			public float[] samples;
-			public bool reset;
-			public bool flush;
-			/** End of a mic listen: write debug session if armed, then reset. */
-			public bool session_end;
-
-			public PcmChunk(owned float[] samples)
-			{
-				this.samples = (owned) samples;
-				this.reset = false;
-				this.flush = false;
-				this.session_end = false;
-			}
-
-			public PcmChunk.for_reset()
-			{
-				this.samples = {};
-				this.reset = true;
-				this.flush = false;
-				this.session_end = false;
-			}
-
-			public PcmChunk.for_flush()
-			{
-				this.samples = {};
-				this.reset = false;
-				this.flush = true;
-				this.session_end = false;
-			}
-
-			public PcmChunk.for_session_end()
-			{
-				this.samples = {};
-				this.reset = false;
-				this.flush = false;
-				this.session_end = true;
-			}
-		}
-
 		private SherpaOnnx.OnlineRecognizer recognizer;
 		private SherpaOnnx.OnlineStream stream;
 		private Gst.Pipeline pipeline;
@@ -99,29 +57,21 @@ namespace IBSO
 		/** True while we muted the default sink for this listen session. */
 		private bool output_mute_held = false;
 
-		/**
-		 * Worker-only PCM for the whole listen when debug-recordings is on.
-		 * Kept across ASR endpoints (includes mid-session silence).
-		 */
-		private GLib.Array<float> session_pcm = new GLib.Array<float>(false, false, (uint) sizeof(float));
-		/**
-		 * Worker-only sample counts per {@link SherpaOnnx.OnlineStream.accept_waveform}
-		 * during the listen (same order as live feed). Written to ''.chunks''.
-		 */
-		private GLib.Array<int> session_chunk_n = new GLib.Array<int>(false, false, (uint) sizeof(int));
-		/** Worker-only committed texts for this listen (newline between). */
-		private string session_text = "";
-		private bool session_recording = false;
-		/** Wall time at {@link start}; basename for debug files. */
-		private GLib.DateTime? session_started = null;
-		/** Pending partial committed on stop (main → worker via session_end). */
-		private string session_pending = "";
+		/** Listen-session capture buffers (debug recordings). */
+		public Session session { get; private set; default = new Session(); }
 
 		/**
 		 * True while debug Replay / CLI file feed is active (no mic).
 		 * Main / CLI / {@link IBSO.Debug.Replay} sets; worker clears after flush.
 		 */
 		public bool file_feeding { get; set; default = false; }
+
+		/**
+		 * Live endpoint sample offsets for Replay (''.endpoints''). When set,
+		 * worker commits/resets at these positions and ignores ''is_endpoint''.
+		 */
+		public int[]? replay_endpoints { get; set; default = null; }
+		private int replay_endpoint_i = 0;
 
 		/** Emit {@link replay_finished} after the worker flush Idle. */
 		public bool notify_replay_finished { get; set; default = false; }
@@ -297,23 +247,26 @@ namespace IBSO
 				this.hypothesis = "";
 				this.partial_updates = 0;
 				this.segment_start_us = GLib.get_monotonic_time();
-				this.session_pcm.set_size(0);
-				this.session_chunk_n.set_size(0);
-				this.session_text = "";
-				this.session_recording = this.listening && !this.file_feeding
-					&& this.config.key_file.get_boolean("general", "debug-recordings");
+				this.replay_endpoint_i = 0;
+				this.session = new Session() {
+					started = this.session.started,
+					pending = this.session.pending,
+					recording = this.listening && !this.file_feeding
+						&& this.config.key_file.get_boolean("general", "debug-recordings")
+				};
 				return;
 			}
 
 			if (chunk.session_end) {
-				this.flush_session_recording();
+				var sess = this.session;
+				this.session = new Session();
+				sess.flush();
 				this.recognizer.reset(this.stream);
 				if (this.stream_language != "") {
 					this.stream.set_option("language", this.stream_language);
 				}
 				this.hypothesis = "";
 				this.partial_updates = 0;
-				this.session_recording = false;
 				return;
 			}
 
@@ -327,6 +280,7 @@ namespace IBSO
 				var finished = this.notify_replay_finished;
 				this.notify_replay_finished = false;
 				this.file_feeding = false;
+				this.replay_endpoints = null;
 				GLib.Idle.add(() => {
 					this.last_text = "";
 					if (commit != "") {
@@ -344,16 +298,13 @@ namespace IBSO
 				}
 				this.hypothesis = "";
 				this.partial_updates = 0;
-				this.session_pcm.set_size(0);
-				this.session_chunk_n.set_size(0);
-				this.session_text = "";
-				this.session_recording = false;
+				this.session = new Session();
 				return;
 			}
 
 			/* After stop(), drain leftover mic chunks into the session buffer only. */
-			if (this.session_recording && chunk.samples.length > 0) {
-				this.session_pcm.append_vals(chunk.samples, chunk.samples.length);
+			if (this.session.recording && chunk.samples.length > 0) {
+				this.session.pcm.append_vals(chunk.samples, chunk.samples.length);
 			}
 
 			if (!this.listening && !this.file_feeding) {
@@ -364,10 +315,11 @@ namespace IBSO
 				this.feed_pos_s += chunk.samples.length / 16000.0;
 			}
 
-			if (this.session_recording && chunk.samples.length > 0) {
-				this.session_chunk_n.append_val(chunk.samples.length);
+			if (this.session.recording && chunk.samples.length > 0) {
+				this.session.chunk_n.append_val(chunk.samples.length);
 			}
 			this.stream.accept_waveform(16000, chunk.samples);
+			this.session.accepted += chunk.samples.length;
 			while (this.recognizer.is_ready(this.stream) == 1) {
 				this.recognizer.decode(this.stream);
 			}
@@ -388,8 +340,19 @@ namespace IBSO
 				});
 			}
 
-			if (this.recognizer.is_endpoint(this.stream) != 1) {
+			/* Replay with ''.endpoints'': cut only at live sample offsets. */
+			if (this.replay_endpoints != null) {
+				if (this.replay_endpoint_i >= this.replay_endpoints.length
+						|| this.session.accepted < this.replay_endpoints[this.replay_endpoint_i]) {
+					return;
+				}
+				this.replay_endpoint_i++;
+			} else if (this.recognizer.is_endpoint(this.stream) != 1) {
 				return;
+			}
+
+			if (this.session.recording) {
+				this.session.endpoint_off.append_val(this.session.accepted);
 			}
 
 			if (this.hypothesis == "") {
@@ -404,11 +367,11 @@ namespace IBSO
 			}
 
 			var commit = this.hypothesis;
-			if (this.session_recording) {
-				if (this.session_text != "") {
-					this.session_text += "\n";
+			if (this.session.recording) {
+				if (this.session.text != "") {
+					this.session.text += "\n";
 				}
-				this.session_text += commit;
+				this.session.text += commit;
 			}
 			var wall_s = (GLib.get_monotonic_time() - this.segment_start_us) / 1000000.0;
 			var partials = this.partial_updates;
@@ -436,46 +399,6 @@ namespace IBSO
 			this.hypothesis = "";
 			this.partial_updates = 0;
 			this.segment_start_us = GLib.get_monotonic_time();
-		}
-
-		/**
-		 * Write buffered listen-session PCM + text (worker). Disk I/O on Idle.
-		 */
-		private void flush_session_recording()
-		{
-			var pending = this.session_pending;
-			this.session_pending = "";
-			if (pending != "") {
-				if (this.session_text != "") {
-					this.session_text += "\n";
-				}
-				this.session_text += pending;
-			}
-			if (!this.session_recording && this.session_text == "" && this.session_pcm.length == 0) {
-				return;
-			}
-			var pcm = this.session_pcm.steal();
-			/* Copy by Array.length — steal() has returned a byte-ish length for int[]
-			 * (trailing zeros / garbage ints in ''.chunks''). */
-			var n_chunks = (int) this.session_chunk_n.length;
-			var chunk_ns = new int[n_chunks];
-			if (n_chunks > 0) {
-				GLib.Memory.copy((void*) chunk_ns, this.session_chunk_n.data,
-					n_chunks * sizeof(int));
-			}
-			this.session_chunk_n.set_size(0);
-			var text = this.session_text;
-			var started = this.session_started;
-			this.session_text = "";
-			this.session_started = null;
-			this.session_recording = false;
-			if (text == "" && pcm.length == 0) {
-				return;
-			}
-			GLib.Idle.add(() => {
-				Debug.Recording.save(text, pcm, chunk_ns, started);
-				return GLib.Source.REMOVE;
-			});
 		}
 
 		/**
@@ -522,8 +445,9 @@ namespace IBSO
 				return;
 			}
 			this.last_text = "";
-			this.session_pending = "";
-			this.session_started = new GLib.DateTime.now_local();
+			this.session = new Session() {
+				started = new GLib.DateTime.now_local()
+			};
 			this.listening = true;
 			this.audio_queue.push(new PcmChunk.for_reset());
 			if (this.config.key_file.get_boolean("general", "mute-speakers")) {
@@ -546,9 +470,9 @@ namespace IBSO
 			this.listening = false;
 			this.pipeline.set_state(Gst.State.NULL);
 			this.output_mute(false);
-			this.session_pending = pending.strip();
+			this.session.pending = pending.strip();
 			this.last_text = "";
-			/* Keep the queue so the worker can flush session_pcm, then reset. */
+			/* Keep the queue so the worker can flush session.pcm, then reset. */
 			this.audio_queue.push(new PcmChunk.for_session_end());
 		}
 

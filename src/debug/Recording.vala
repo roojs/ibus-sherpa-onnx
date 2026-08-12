@@ -24,19 +24,27 @@ namespace IBSO.Debug
 	 *
 	 * Basename ''HHMMSS'' from listen start. ''.wav'' is mono 16 kHz S16LE for
 	 * speakers; ''.f32'' is the live float ''accept_waveform'' PCM (Replay ASR);
-	 * ''.chunks'' is LE int32 sample counts per accept; ''.txt'' is UTF-8.
+	 * ''.chunks'' is LE int32 sample counts per accept; ''.endpoints'' is LE
+	 * int32 sample positions where live reset after ''is_endpoint''; ''.txt'' is UTF-8.
 	 */
 	public class Recording : GLib.Object
 	{
 		/**
-		 * Persist session text + PCM + live chunk sizes (main loop / Idle).
+		 * Persist session text + PCM + live chunk sizes + endpoint offsets (Idle).
 		 *
 		 * @param text committed transcripts for the listen (may be empty)
 		 * @param samples float mono PCM at 16 kHz (same as accept_waveform)
 		 * @param chunk_ns sample count per accept_waveform during the listen
+		 * @param endpoint_offs sample positions of live endpoint resets
 		 * @param started wall time at listen start (basename); null → now
 		 */
-		public static void save(string text, float[] samples, int[] chunk_ns, GLib.DateTime? started = null)
+		public static void save(
+			string text,
+			float[] samples,
+			int[] chunk_ns,
+			int[] endpoint_offs,
+			GLib.DateTime? started = null
+		)
 		{
 			/* Skip empty transcripts — silence-only listens clutter Browse.
 			 * Comment out if we ever need to debug “heard nothing” captures. */
@@ -87,6 +95,12 @@ namespace IBSO.Debug
 				 * sets nmemb to byte length; size must stay 1 (not sizeof(int)),
 				 * or the file is 4× too long and the tail is heap garbage. */
 				chunks.write((uint8[]) chunk_ns);
+			}
+			var ends = GLib.FileStream.open(stem + ".endpoints", "wb");
+			if (ends == null) {
+				GLib.warning("debug recording endpoints: open failed");
+			} else if (endpoint_offs.length > 0) {
+				ends.write((uint8[]) endpoint_offs);
 			}
 		}
 
@@ -142,6 +156,33 @@ namespace IBSO.Debug
 			var samples = new float[n];
 			GLib.Memory.copy((void*) samples, data, data.length);
 			return samples;
+		}
+
+		/**
+		 * Load live endpoint sample offsets from a sibling ''.endpoints'' file.
+		 *
+		 * @param wav_path path ending in ''.wav'' (or a stem)
+		 * @return LE int32 positions after accept where live reset, or null
+		 */
+		public static int[]? load_endpoints(string wav_path)
+		{
+			var path = wav_path.has_suffix(".wav")
+				? wav_path.slice(0, wav_path.length - 4) + ".endpoints"
+				: wav_path + ".endpoints";
+			uint8[] data;
+			try {
+				GLib.FileUtils.get_data(path, out data);
+			} catch (GLib.Error err) {
+				return null;
+			}
+			if (data.length == 0 || data.length % (int) sizeof(int) != 0) {
+				GLib.warning("debug endpoints invalid: %s (%d bytes)", path, data.length);
+				return null;
+			}
+			var n = data.length / (int) sizeof(int);
+			var offs = new int[n];
+			GLib.Memory.copy((void*) offs, data, data.length);
+			return offs;
 		}
 
 		/**

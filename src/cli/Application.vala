@@ -323,11 +323,30 @@ namespace IBSO.Cli
 			if (feed_chunks != null && (i0 > 0 || i1 < n_all)) {
 				feed_chunks = IBSO.Debug.Recording.slice_chunks(feed_chunks, i0, i1);
 			}
+			var feed_ends = IBSO.Debug.Recording.load_endpoints(opt_wav);
+			if (feed_ends != null && (i0 > 0 || i1 < n_all)) {
+				var sliced = new GLib.Array<int>(false, false, (uint) sizeof(int));
+				foreach (var off in feed_ends) {
+					if (off <= i0) {
+						continue;
+					}
+					if (off > i1) {
+						break;
+					}
+					var rel = off - i0;
+					sliced.append_val(rel);
+				}
+				feed_ends = new int[sliced.length];
+				if (sliced.length > 0) {
+					GLib.Memory.copy((void*) feed_ends, sliced.data, sliced.length * sizeof(int));
+				}
+			}
 			var file_end = opt_from + pcm.length / 16000.0;
-			GLib.debug("#wav %s from=%.3f to=%.3f chunk_ms=%d live_chunks=%s f32=%s fast=%s samples=%d language=%s model=%s",
+			GLib.debug("#wav %s from=%.3f to=%.3f chunk_ms=%d live_chunks=%s f32=%s endpoints=%s fast=%s samples=%d language=%s model=%s",
 				opt_wav, opt_from, file_end, opt_chunk_ms,
 				feed_chunks != null ? feed_chunks.length.to_string() : "none",
 				(live != null).to_string(),
+				feed_ends != null ? feed_ends.length.to_string() : "none",
 				opt_fast_transcribe.to_string(), pcm.length, language, model_dir);
 
 			var replay = new IBSO.Debug.Replay(transcriber);
@@ -360,9 +379,10 @@ namespace IBSO.Cli
 			if (opt_fast_transcribe) {
 				transcriber.file_feeding = true;
 				transcriber.notify_replay_finished = true;
+				transcriber.replay_endpoints = feed_ends;
 				transcriber.feed_pos_s = 0.0;
 				transcriber.last_text = "";
-				transcriber.audio_queue.push(new IBSO.Transcriber.PcmChunk.for_reset());
+				transcriber.audio_queue.push(new IBSO.PcmChunk.for_reset());
 				var off = 0;
 				var ci = 0;
 				while (off < pcm.length) {
@@ -380,11 +400,12 @@ namespace IBSO.Cli
 						sum += (double) slice[i] * slice[i];
 					}
 					GLib.debug("#chunk t=%.3f-%.3f n=%d rms=%.4f", t0, t1, cn, Math.sqrt(sum / cn));
-					transcriber.audio_queue.push(new IBSO.Transcriber.PcmChunk((owned) slice));
+					transcriber.audio_queue.push(new IBSO.PcmChunk((owned) slice));
 					off += cn;
 				}
-				transcriber.audio_queue.push(new IBSO.Transcriber.PcmChunk.for_flush());
+				transcriber.audio_queue.push(new IBSO.PcmChunk.for_flush());
 				loop.run();
+				transcriber.replay_endpoints = null;
 				return 0;
 			}
 
@@ -403,7 +424,7 @@ namespace IBSO.Cli
 				path = tmp;
 			}
 			GLib.debug("#replay %s", path);
-			replay.start(path, feed_chunks, pcm);
+			replay.start(path, feed_chunks, pcm, feed_ends);
 			loop.run();
 			if (tmp != null) {
 				GLib.FileUtils.unlink(tmp);
