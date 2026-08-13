@@ -23,8 +23,8 @@ namespace IBSO
 	 *
 	 * Callers construct this only — never {@link Transcriber}. When {@link save},
 	 * {@link Session.recording} is on for a listen and ''.chunks'' / ''.f32'' /
-	 * ''.pending'' mirror {@link push} / {@link reset} / {@link flush}. When save
-	 * is false, Session methods no-op and only ASR runs.
+	 * ''.pending'' / ''.feedlog'' mirror {@link push} / {@link reset} /
+	 * {@link flush}. When save is false, Session methods no-op and only ASR runs.
 	 *
 	 * == Example ==
 	 *
@@ -51,6 +51,9 @@ namespace IBSO
 
 		/** Debug op / PCM log for the current listen (or idle empty session). */
 		private Session session = new Session();
+
+		/** Samples checksummed this listen (''.feedlog'' offset). */
+		private int feed_off = 0;
 
 		/**
 		 * @param engine owning engine (IBus or stub)
@@ -90,6 +93,18 @@ namespace IBSO
 		public void push(owned float[] samples)
 		{
 			this.session.record_pcm(samples);
+			if (samples.length > 0) {
+				var sum = new GLib.Checksum(GLib.ChecksumType.SHA256);
+				unowned uint8[] bytes = (uint8[]) samples;
+				sum.update(bytes, samples.length * sizeof(float));
+				var line = "%d %d %s".printf(this.feed_off, samples.length,
+					sum.get_string().substring(0, 16));
+				GLib.debug("#feed %s", line);
+				if (this.session.recording) {
+					this.session.feedlog_body += line + "\n";
+				}
+				this.feed_off += samples.length;
+			}
 			this.queue_pcm((owned) samples);
 		}
 
@@ -99,6 +114,11 @@ namespace IBSO
 		public void reset()
 		{
 			this.session.record_reset();
+			var line = "R %d".printf(this.feed_off);
+			GLib.debug("#feed %s", line);
+			if (this.session.recording) {
+				this.session.feedlog_body += line + "\n";
+			}
 			this.queue_reset();
 		}
 
@@ -110,12 +130,15 @@ namespace IBSO
 		public void flush(string pending = "")
 		{
 			this.session.record_flush(pending);
+			var line = "F %d".printf(this.feed_off);
+			GLib.debug("#feed %s", line);
+			if (this.session.recording) {
+				this.session.feedlog_body += line + "\n";
+			}
 			this.queue_flush(pending);
 		}
 
-		/**
-		 * Open a recording session when {@link save}, log reset, start mic.
-		 */
+		/** Open a recording session when {@link save}, log reset, start mic. */
 		public void start()
 		{
 			this.session = this.save
@@ -124,6 +147,7 @@ namespace IBSO
 					recording = true
 				}
 				: new Session();
+			this.feed_off = 0;
 			this.reset();
 			this.start_mic();
 		}

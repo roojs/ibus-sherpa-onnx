@@ -79,6 +79,12 @@ namespace IBSO
 		public string pending { get; set; default = ""; }
 
 		/**
+		 * Checksums of Capture reset / push / flush (''.feedlog''), filled while
+		 * {@link recording}.
+		 */
+		public string feedlog_body { get; set; default = ""; }
+
+		/**
 		 * Log a {@link Capture.push} of ''n'' samples (no-op if not {@link recording}).
 		 *
 		 * @param n sample count (must be &gt; 0)
@@ -308,6 +314,15 @@ namespace IBSO
 				}
 			} catch (GLib.Error err) {
 			}
+
+			try {
+				string body;
+				GLib.FileUtils.get_contents(stem + ".feedlog", out body);
+				if (body.strip() != "") {
+					this.feedlog_body = body;
+				}
+			} catch (GLib.Error err) {
+			}
 		}
 
 		/**
@@ -347,8 +362,10 @@ namespace IBSO
 			}
 			var text = this.text;
 			var started = this.started;
+			var feedlog = this.feedlog_body;
 			GLib.Idle.add(() => {
-				Debug.Recording.save(text, samples, chunk_ns, endpoint_offs, started, stop_pending);
+				Debug.Recording.save(text, samples, chunk_ns, endpoint_offs, started,
+					stop_pending, feedlog);
 				return GLib.Source.REMOVE;
 			});
 		}

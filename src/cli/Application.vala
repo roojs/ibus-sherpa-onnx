@@ -329,6 +329,7 @@ namespace IBSO.Cli
 
 			var run = new IBSO.Session();
 			run.pending = sess.pending;
+			run.feedlog_body = sess.feedlog_body;
 			if (pcm.length > 0) {
 				run.pcm.append_vals(pcm, pcm.length);
 			}

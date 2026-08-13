@@ -24,10 +24,11 @@ namespace IBSO.Debug
 	 *
 	 * Basename ''HHMMSS'' from listen start. ''.wav'' is mono 16 kHz S16LE for
 	 * speakers; ''.f32'' is the live float ''accept_waveform'' PCM (Replay ASR);
-	 * ''.chunks'' is LE int32 sample counts per accept; ''.endpoints'' is LE
-	 * int32 sample positions where live reset after ''is_endpoint''; ''.pending''
-	 * is the listen-stop partial (if any); ''.txt'' is UTF-8.
-	 */
+		 * ''.chunks'' is LE int32 sample counts per accept; ''.endpoints'' is LE
+		 * int32 sample positions where live reset after ''is_endpoint''; ''.pending''
+		 * is the listen-stop partial (if any); ''.feedlog'' checksums each chunk
+		 * the recognizer received; ''.txt'' is UTF-8.
+		 */
 	public class Recording : GLib.Object
 	{
 		/**
@@ -39,6 +40,7 @@ namespace IBSO.Debug
 		 * @param endpoint_offs sample positions of live endpoint resets
 		 * @param started wall time at listen start (basename); null → now
 		 * @param stop_pending listen-stop partial (written to ''.pending'')
+		 * @param feedlog recognizer accept checksums (''.feedlog''; may be empty)
 		 */
 		public static void save(
 			string text,
@@ -46,7 +48,8 @@ namespace IBSO.Debug
 			int[] chunk_ns,
 			int[] endpoint_offs,
 			GLib.DateTime? started = null,
-			string stop_pending = ""
+			string stop_pending = "",
+			string feedlog = ""
 		)
 		{
 			/* Skip empty transcripts — silence-only listens clutter Browse.
@@ -110,6 +113,13 @@ namespace IBSO.Debug
 					GLib.FileUtils.set_contents(stem + ".pending", stop_pending);
 				} catch (GLib.Error err) {
 					GLib.warning("debug recording pending: %s", err.message);
+				}
+			}
+			if (feedlog.strip() != "") {
+				try {
+					GLib.FileUtils.set_contents(stem + ".feedlog", feedlog);
+				} catch (GLib.Error err) {
+					GLib.warning("debug recording feedlog: %s", err.message);
 				}
 			}
 		}
