@@ -350,7 +350,12 @@ namespace IBSO
 			this.transcriber = null;
 			try {
 				GLib.debug("Loading model pack %s (%s): %s", pack, this.language, model_dir);
-				var t = new Transcriber(this, Engine.config) {
+				var save = false;
+				try {
+					save = Engine.config.key_file.get_boolean("general", "debug-recordings");
+				} catch (GLib.Error err) {
+				}
+				var t = new Capture(this, Engine.config, save) {
 					model_dir = model_dir,
 					pack = pack
 				};

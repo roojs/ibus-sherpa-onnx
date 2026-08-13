@@ -19,27 +19,25 @@
 namespace IBSO
 {
 	/**
-	 * Streaming mic ASR: GStreamer capture → sherpa-onnx online transducer.
+	 * Streaming ASR: mic or file PCM → sherpa-onnx online transducer.
+	 *
+	 * Debug recording lives on {@link Capture}. This class is accept / decode /
+	 * endpoint / stop only. Callers construct {@link Capture} (save on or off).
 	 *
 	 * {{{
-	 *   var t = new Transcriber(engine) {
+	 *   var t = new Capture(engine, config, save) {
 	 *     model_dir = dir,
 	 *     pack = pack
 	 *   };
 	 *   t.load();
 	 * }}}
 	 *
-	 * CLI/GTK pass the stub {@link Engine}. Also emits {@link partial} /
-	 * {@link endpoint} for signal clients.
-	 * {@link load} is slow; {@link start} / {@link stop} only flip the mic.
-	 *
-	 * Threads: appsink pushes PCM (or a reset) onto {@link GLib.AsyncQueue};
-	 * one worker owns sherpa accept/decode/reset; Idle marshals text to main.
-	 * No mutexes — queue + worker ownership only.
+	 * Threads: {@link push} / appsink enqueue {@link PcmChunk}; one worker owns
+	 * sherpa; Idle marshals text to main. No mutexes — queue + worker only.
 	 *
 	 * @since 0.2
 	 */
-	public class Transcriber : GLib.Object
+	public abstract class Transcriber : GLib.Object
 	{
 		private SherpaOnnx.OnlineRecognizer recognizer;
 		private SherpaOnnx.OnlineStream stream;
@@ -57,24 +55,10 @@ namespace IBSO
 		/** True while we muted the default sink for this listen session. */
 		private bool output_mute_held = false;
 
-		/** Listen-session capture buffers (debug recordings). */
-		public Session session { get; private set; default = new Session(); }
-
 		/**
-		 * True while debug Replay / CLI file feed is active (no mic).
-		 * Main / CLI / {@link IBSO.Debug.Replay} sets; worker clears after flush.
+		 * True while file feed is active (Replay / CLI). Implemented by {@link Capture}.
 		 */
-		public bool file_feeding { get; set; default = false; }
-
-		/**
-		 * Live endpoint sample offsets for Replay (''.endpoints''). When set,
-		 * worker commits/resets at these positions and ignores ''is_endpoint''.
-		 */
-		public int[]? replay_endpoints { get; set; default = null; }
-		private int replay_endpoint_i = 0;
-
-		/** Emit {@link replay_finished} after the worker flush Idle. */
-		public bool notify_replay_finished { get; set; default = false; }
+		public abstract bool file_active { get; }
 
 		/** Directory with int8 ONNX + tokens.txt (set before {@link load}). */
 		public string model_dir { get; set; default = ""; }
@@ -85,7 +69,7 @@ namespace IBSO
 		/** Catalog language code; English codes skip stream option. */
 		public string language { get; set; default = ""; }
 
-		/** Prefs (''mute-speakers'', ''debug-recordings'', …); refreshed on focus. */
+		/** Prefs (''mute-speakers'', …); refreshed on focus. */
 		public Config config { get; set construct; }
 
 		/** Owning engine (IBus or CLI/GTK stub). */
@@ -133,20 +117,7 @@ namespace IBSO
 		 * File feed finished (flush Idle). Browse Replay and CLI --wav.
 		 * Main loop.
 		 */
-		public signal void replay_finished();
-
-		/**
-		 * @param engine owning engine (IBus or stub)
-		 * @param config settings (already loaded)
-		 */
-		public Transcriber(Engine engine, Config config)
-		{
-			GLib.Object(
-				engine: engine,
-				config: config
-			);
-			this.language = engine.language;
-		}
+		public signal void file_finished();
 
 		/**
 		 * Load Nemotron online recognizer from {@link model_dir}.
@@ -179,7 +150,7 @@ namespace IBSO
 						joiner = GLib.Path.build_filename(this.model_dir, "joiner.int8.onnx"),
 					},
 					tokens = GLib.Path.build_filename(this.model_dir, "tokens.txt"),
-					num_threads = (int32) GLib.get_num_processors().clamp(1, 4),
+					num_threads = 1,
 					provider = "cpu",
 				},
 				decoding_method = "greedy_search",
@@ -247,20 +218,10 @@ namespace IBSO
 				this.hypothesis = "";
 				this.partial_updates = 0;
 				this.segment_start_us = GLib.get_monotonic_time();
-				this.replay_endpoint_i = 0;
-				this.session = new Session() {
-					started = this.session.started,
-					pending = this.session.pending,
-					recording = this.listening && !this.file_feeding
-						&& this.config.key_file.get_boolean("general", "debug-recordings")
-				};
 				return;
 			}
 
 			if (chunk.session_end) {
-				var sess = this.session;
-				this.session = new Session();
-				sess.flush();
 				this.recognizer.reset(this.stream);
 				if (this.stream_language != "") {
 					this.stream.set_option("language", this.stream_language);
@@ -271,16 +232,10 @@ namespace IBSO
 			}
 
 			if (chunk.flush) {
-				this.stream.input_finished();
-				while (this.recognizer.is_ready(this.stream) == 1) {
-					this.recognizer.decode(this.stream);
-				}
-				var result = this.recognizer.get_result(this.stream);
-				var commit = result.text != "" ? result.text : this.hypothesis;
-				var finished = this.notify_replay_finished;
-				this.notify_replay_finished = false;
-				this.file_feeding = false;
-				this.replay_endpoints = null;
+				/* Match listen stop(): commit stop partial when set, else
+				 * current hypothesis — never input_finished() (changes the line). */
+				var commit = chunk.flush_pending != "" ? chunk.flush_pending : this.hypothesis;
+				var finished = chunk.flush_finished;
 				GLib.Idle.add(() => {
 					this.last_text = "";
 					if (commit != "") {
@@ -288,7 +243,7 @@ namespace IBSO
 						this.endpoint(commit);
 					}
 					if (finished) {
-						this.replay_finished();
+						this.file_finished();
 					}
 					return GLib.Source.REMOVE;
 				});
@@ -298,28 +253,17 @@ namespace IBSO
 				}
 				this.hypothesis = "";
 				this.partial_updates = 0;
-				this.session = new Session();
 				return;
 			}
 
-			/* After stop(), drain leftover mic chunks into the session buffer only. */
-			if (this.session.recording && chunk.samples.length > 0) {
-				this.session.pcm.append_vals(chunk.samples, chunk.samples.length);
-			}
-
-			if (!this.listening && !this.file_feeding) {
+			if (!this.listening && !this.file_active) {
 				return;
 			}
 
-			if (this.file_feeding && chunk.samples.length > 0) {
+			if (this.file_active && chunk.samples.length > 0) {
 				this.feed_pos_s += chunk.samples.length / 16000.0;
 			}
-
-			if (this.session.recording && chunk.samples.length > 0) {
-				this.session.chunk_n.append_val(chunk.samples.length);
-			}
 			this.stream.accept_waveform(16000, chunk.samples);
-			this.session.accepted += chunk.samples.length;
 			while (this.recognizer.is_ready(this.stream) == 1) {
 				this.recognizer.decode(this.stream);
 			}
@@ -330,7 +274,7 @@ namespace IBSO
 				this.partial_updates++;
 				var copy = result.text;
 				GLib.Idle.add(() => {
-					if (!this.listening && !this.file_feeding) {
+					if (!this.listening && !this.file_active) {
 						return GLib.Source.REMOVE;
 					}
 					this.last_text = copy;
@@ -340,19 +284,8 @@ namespace IBSO
 				});
 			}
 
-			/* Replay with ''.endpoints'': cut only at live sample offsets. */
-			if (this.replay_endpoints != null) {
-				if (this.replay_endpoint_i >= this.replay_endpoints.length
-						|| this.session.accepted < this.replay_endpoints[this.replay_endpoint_i]) {
-					return;
-				}
-				this.replay_endpoint_i++;
-			} else if (this.recognizer.is_endpoint(this.stream) != 1) {
+			if (this.recognizer.is_endpoint(this.stream) != 1) {
 				return;
-			}
-
-			if (this.session.recording) {
-				this.session.endpoint_off.append_val(this.session.accepted);
 			}
 
 			if (this.hypothesis == "") {
@@ -367,16 +300,10 @@ namespace IBSO
 			}
 
 			var commit = this.hypothesis;
-			if (this.session.recording) {
-				if (this.session.text != "") {
-					this.session.text += "\n";
-				}
-				this.session.text += commit;
-			}
 			var wall_s = (GLib.get_monotonic_time() - this.segment_start_us) / 1000000.0;
 			var partials = this.partial_updates;
 			GLib.Idle.add(() => {
-				if (!this.listening && !this.file_feeding) {
+				if (!this.listening && !this.file_active) {
 					return GLib.Source.REMOVE;
 				}
 				this.last_token_count = (int) result.count;
@@ -402,8 +329,7 @@ namespace IBSO
 		}
 
 		/**
-		 * GStreamer appsink ''new-sample'': copy PCM onto {@link audio_queue} only.
-		 * Decode runs on {@link processing_loop}.
+		 * GStreamer appsink ''new-sample'': copy PCM and {@link push}.
 		 *
 		 * @param sink appsink that emitted the sample
 		 * @return flow result for the appsink
@@ -415,7 +341,7 @@ namespace IBSO
 				return Gst.FlowReturn.ERROR;
 			}
 
-			if (!this.listening && !this.file_feeding) {
+			if (!this.listening && !this.file_active) {
 				return Gst.FlowReturn.OK;
 			}
 
@@ -432,22 +358,48 @@ namespace IBSO
 			if (map.size >= sizeof(float)) {
 				var samples = new float[map.size / sizeof(float)];
 				GLib.Memory.copy((void*) samples, map.data, map.size);
-				this.audio_queue.push(new PcmChunk((owned) samples));
+				this.push((owned) samples);
 			}
 			buffer.unmap(map);
 			return Gst.FlowReturn.OK;
 		}
 
+		/**
+		 * Queue PCM for the ASR worker (mic / Replay / {@link Capture}).
+		 *
+		 * @param samples mono float PCM (ownership taken)
+		 */
+		public virtual void push(owned float[] samples)
+		{
+			this.audio_queue.push(new PcmChunk((owned) samples));
+		}
+
+		/**
+		 * Enter file-feed mode (Replay / CLI). Implemented by {@link Capture}.
+		 *
+		 * @param from_disk loaded session (pending / pcm / chunks for the caller)
+		 */
+		public abstract void begin_file(Session from_disk);
+
+		/**
+		 * Finish file feed (flush + {@link file_finished}). Implemented by {@link Capture}.
+		 */
+		public abstract void end_file();
+
+		/**
+		 * Cancel an in-progress file feed without {@link file_finished}.
+		 * Implemented by {@link Capture}.
+		 */
+		public abstract void cancel_file();
+
 		/** Start mic capture (main loop). Idempotent if already listening. */
-		public void start()
+		public virtual void start()
 		{
 			if (this.listening) {
 				return;
 			}
+			this.cancel_file();
 			this.last_text = "";
-			this.session = new Session() {
-				started = new GLib.DateTime.now_local()
-			};
 			this.listening = true;
 			this.audio_queue.push(new PcmChunk.for_reset());
 			if (this.config.key_file.get_boolean("general", "mute-speakers")) {
@@ -457,12 +409,11 @@ namespace IBSO
 		}
 
 		/**
-		 * Stop mic capture and queue a session flush + stream reset (main loop).
-		 * Idempotent.
+		 * Stop mic capture and queue a stream reset (main loop). Idempotent.
 		 *
-		 * @param pending unfinished partial to include in the debug ''.txt'' (may be empty)
+		 * @param pending unused here; {@link Capture} records it when saving
 		 */
-		public void stop(string pending = "")
+		public virtual void stop(string pending = "")
 		{
 			if (!this.listening) {
 				return;
@@ -470,9 +421,7 @@ namespace IBSO
 			this.listening = false;
 			this.pipeline.set_state(Gst.State.NULL);
 			this.output_mute(false);
-			this.session.pending = pending.strip();
 			this.last_text = "";
-			/* Keep the queue so the worker can flush session.pcm, then reset. */
 			this.audio_queue.push(new PcmChunk.for_session_end());
 		}
 

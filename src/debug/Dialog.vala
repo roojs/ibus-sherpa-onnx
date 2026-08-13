@@ -279,7 +279,7 @@ namespace IBSO.Debug
 				language = language
 			};
 			try {
-				this.transcriber = new IBSO.Transcriber(engine, config) {
+				this.transcriber = new IBSO.Capture(engine, config, false) {
 					model_dir = model_dir,
 					pack = pack
 				};
@@ -321,7 +321,7 @@ namespace IBSO.Debug
 				this.output_buf.place_cursor(end);
 				this.output_view.scroll_mark_onscreen(this.output_buf.get_insert());
 			});
-			this.transcriber.replay_finished.connect(() => {
+			this.transcriber.file_finished.connect(() => {
 				if (!this.replaying) {
 					return;
 				}

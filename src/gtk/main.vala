@@ -34,7 +34,13 @@ int main(string[] args)
 		var engine = new IBSO.Engine();
 		IBSO.Transcriber transcriber;
 		try {
-			transcriber = new IBSO.Transcriber(engine, IBSO.Config.load()) {
+			var config = IBSO.Config.load();
+			var save = false;
+			try {
+				save = config.key_file.get_boolean("general", "debug-recordings");
+			} catch (GLib.Error err) {
+			}
+			transcriber = new IBSO.Capture(engine, config, save) {
 				model_dir = model_dir
 			};
 			transcriber.load();

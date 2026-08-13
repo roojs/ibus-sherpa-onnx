@@ -26,6 +26,7 @@ namespace IBSO
 	 * {{{
 	 * audio_queue.push(new PcmChunk((owned) samples));
 	 * audio_queue.push(new PcmChunk.for_reset());
+	 * audio_queue.push(new PcmChunk.for_flush(pending, true));
 	 * }}}
 	 */
 	public class PcmChunk
@@ -33,8 +34,12 @@ namespace IBSO
 		public float[] samples;
 		public bool reset;
 		public bool flush;
-		/** End of a mic listen: write debug session if armed, then reset. */
+		/** End of a mic listen: reset the stream. */
 		public bool session_end;
+		/** Stop partial for {@link flush} (from {@link Capture.end_file}). */
+		public string flush_pending;
+		/** Emit {@link Transcriber.file_finished} after this flush. */
+		public bool flush_finished;
 
 		public PcmChunk(owned float[] samples)
 		{
@@ -42,6 +47,8 @@ namespace IBSO
 			this.reset = false;
 			this.flush = false;
 			this.session_end = false;
+			this.flush_pending = "";
+			this.flush_finished = false;
 		}
 
 		public PcmChunk.for_reset()
@@ -50,14 +57,22 @@ namespace IBSO
 			this.reset = true;
 			this.flush = false;
 			this.session_end = false;
+			this.flush_pending = "";
+			this.flush_finished = false;
 		}
 
-		public PcmChunk.for_flush()
+		/**
+		 * @param pending stop partial to commit (may be empty)
+		 * @param finished emit file_finished after Idle
+		 */
+		public PcmChunk.for_flush(string pending = "", bool finished = true)
 		{
 			this.samples = {};
 			this.reset = false;
 			this.flush = true;
 			this.session_end = false;
+			this.flush_pending = pending;
+			this.flush_finished = finished;
 		}
 
 		public PcmChunk.for_session_end()
@@ -66,6 +81,8 @@ namespace IBSO
 			this.reset = false;
 			this.flush = false;
 			this.session_end = true;
+			this.flush_pending = "";
+			this.flush_finished = false;
 		}
 	}
 }

@@ -25,7 +25,8 @@ namespace IBSO.Debug
 	 * Basename ''HHMMSS'' from listen start. ''.wav'' is mono 16 kHz S16LE for
 	 * speakers; ''.f32'' is the live float ''accept_waveform'' PCM (Replay ASR);
 	 * ''.chunks'' is LE int32 sample counts per accept; ''.endpoints'' is LE
-	 * int32 sample positions where live reset after ''is_endpoint''; ''.txt'' is UTF-8.
+	 * int32 sample positions where live reset after ''is_endpoint''; ''.pending''
+	 * is the listen-stop partial (if any); ''.txt'' is UTF-8.
 	 */
 	public class Recording : GLib.Object
 	{
@@ -37,13 +38,15 @@ namespace IBSO.Debug
 		 * @param chunk_ns sample count per accept_waveform during the listen
 		 * @param endpoint_offs sample positions of live endpoint resets
 		 * @param started wall time at listen start (basename); null → now
+		 * @param stop_pending listen-stop partial (written to ''.pending'')
 		 */
 		public static void save(
 			string text,
 			float[] samples,
 			int[] chunk_ns,
 			int[] endpoint_offs,
-			GLib.DateTime? started = null
+			GLib.DateTime? started = null,
+			string stop_pending = ""
 		)
 		{
 			/* Skip empty transcripts — silence-only listens clutter Browse.
@@ -102,87 +105,13 @@ namespace IBSO.Debug
 			} else if (endpoint_offs.length > 0) {
 				ends.write((uint8[]) endpoint_offs);
 			}
-		}
-
-		/**
-		 * Load live ''accept_waveform'' sizes from a sibling ''.chunks'' file.
-		 *
-		 * @param wav_path path ending in ''.wav'' (or a stem); ''.chunks'' is derived
-		 * @return little-endian int32 sample counts, or null if missing / invalid
-		 */
-		public static int[]? load_chunks(string wav_path)
-		{
-			var chunks_path = wav_path.has_suffix(".wav")
-				? wav_path.slice(0, wav_path.length - 4) + ".chunks"
-				: wav_path + ".chunks";
-			uint8[] data;
-			try {
-				GLib.FileUtils.get_data(chunks_path, out data);
-			} catch (GLib.Error err) {
-				return null;
+			if (stop_pending != "") {
+				try {
+					GLib.FileUtils.set_contents(stem + ".pending", stop_pending);
+				} catch (GLib.Error err) {
+					GLib.warning("debug recording pending: %s", err.message);
+				}
 			}
-			if (data.length == 0 || data.length % (int) sizeof(int) != 0) {
-				GLib.warning("debug chunks invalid: %s (%d bytes)", chunks_path, data.length);
-				return null;
-			}
-			var n = data.length / (int) sizeof(int);
-			var chunk_ns = new int[n];
-			GLib.Memory.copy((void*) chunk_ns, data, data.length);
-			return chunk_ns;
-		}
-
-		/**
-		 * Load live float PCM from a sibling ''.f32'' (same samples as accept_waveform).
-		 *
-		 * @param wav_path path ending in ''.wav'' (or a stem)
-		 * @return float mono 16 kHz, or null if missing / invalid
-		 */
-		public static float[]? load_pcm(string wav_path)
-		{
-			var f32_path = wav_path.has_suffix(".wav")
-				? wav_path.slice(0, wav_path.length - 4) + ".f32"
-				: wav_path + ".f32";
-			uint8[] data;
-			try {
-				GLib.FileUtils.get_data(f32_path, out data);
-			} catch (GLib.Error err) {
-				return null;
-			}
-			if (data.length == 0 || data.length % (int) sizeof(float) != 0) {
-				GLib.warning("debug f32 invalid: %s (%d bytes)", f32_path, data.length);
-				return null;
-			}
-			var n = data.length / (int) sizeof(float);
-			var samples = new float[n];
-			GLib.Memory.copy((void*) samples, data, data.length);
-			return samples;
-		}
-
-		/**
-		 * Load live endpoint sample offsets from a sibling ''.endpoints'' file.
-		 *
-		 * @param wav_path path ending in ''.wav'' (or a stem)
-		 * @return LE int32 positions after accept where live reset, or null
-		 */
-		public static int[]? load_endpoints(string wav_path)
-		{
-			var path = wav_path.has_suffix(".wav")
-				? wav_path.slice(0, wav_path.length - 4) + ".endpoints"
-				: wav_path + ".endpoints";
-			uint8[] data;
-			try {
-				GLib.FileUtils.get_data(path, out data);
-			} catch (GLib.Error err) {
-				return null;
-			}
-			if (data.length == 0 || data.length % (int) sizeof(int) != 0) {
-				GLib.warning("debug endpoints invalid: %s (%d bytes)", path, data.length);
-				return null;
-			}
-			var n = data.length / (int) sizeof(int);
-			var offs = new int[n];
-			GLib.Memory.copy((void*) offs, data, data.length);
-			return offs;
 		}
 
 		/**

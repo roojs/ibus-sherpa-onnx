@@ -64,11 +64,8 @@ namespace IBSO.Debug
 				return slice;
 			}
 			if (this.eos && this.pending.length > 0) {
-				var n = this.pending.length;
-				var slice = new float[n];
-				Memory.copy(slice, this.pending.data, n * sizeof(float));
-				this.pending._remove_range(0, n);
-				return slice;
+				/* Discard remainder — live never accepted past the last chunk. */
+				this.pending._remove_range(0, this.pending.length);
 			}
 			return null;
 		}
