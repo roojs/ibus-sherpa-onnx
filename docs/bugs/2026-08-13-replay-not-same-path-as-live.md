@@ -52,14 +52,14 @@ if (this.file_active && this.session.endpoint_off.length > 0) {
 
 ### Shape (settled 2026-08-13)
 
-- ✔️ **One class** `Transcriber` with construct `save`: record sidecars when true; ASR-only when false. No subclass / no virtual stubs.
-- ✔️ Mic and Replay both call `push`; cuts always `is_endpoint`; file feed via `begin_file` / `end_file` (pending on flush chunk).
-- 🔷 Engine live: `new Transcriber(..., save: debug-recordings)`. Browse Replay / CLI: `save: false`.
+- ✔️ **`Capture : Transcriber`** with construct `save`: record sidecars when true; ASR-only when false. Callers construct Capture only; Transcriber queue/mic ops are protected.
+- ✔️ Live and Replay both call `Capture.reset` / `push` / `flush`; cuts always `is_endpoint`.
+- ✔️ Engine live: `Capture(save: debug-recordings)`. Browse Replay / CLI: `Capture(save: false)`.
 
 ### Must still hold
 
 - ✔️ **One PCM path in `processing_loop`:** always `is_endpoint` (forced `.endpoints` fork removed).
-- 🔷 File/mic differ only in **source** (appsink vs Feed) and whether `save` records — not in cut/stop logic.
+- ✔️ Browse Replay walks ''.chunks'' ops into Capture (not wav appsink / Feed reassembly). Speakers play ''.wav'' in parallel, paced to 16 kHz.
 - 🔷 **Acceptance:** new listen → Replay Output matches `.txt` word-for-word; user ✅. Phase C stays open until then.
 - 🚫 Do not “fix” by emitting saved `.txt` lines while pretending to ASR.
 - 🚫 Do not add FilePlan / more cut helpers.
@@ -69,8 +69,8 @@ if (this.file_active && this.session.endpoint_off.length > 0) {
 - ✔️ Sidecars `.f32` / `.chunks` / `.endpoints` / `.pending`; `Session.load` / `begin_file` refactor — improved capture, **kept** the dual path.
 - ✔️ Forced endpoints + pending flush made some fixtures match (e.g. older 233428, 001737 once) while **violating** “same path”; 001447 still diverges.
 - ✔️ Agents repeatedly promised “one more fix”; no `docs/bugs/` ticket until 2026-08-13.
-- ✔️ 2026-08-13: tried `Capture : Transcriber` + virtuals; folded back — one `Transcriber` + `save` (no naked base / no stub virtuals).
-- ✔️ 2026-08-13: Engine/GTK/CLI/Dialog construct `Transcriber(save)`; Replay/CLI PCM via `push`; no forced endpoints.
+- ✔️ 2026-08-13: `Capture : Transcriber`; Engine/GTK/CLI/Dialog construct Capture; no forced endpoints.
+- ✔️ 2026-08-13: Browse Replay still fed ASR from wav tee + Feed (positive chunk sizes only) — **not** the Capture op log. Fixed: Replay walks `0` / `n` / `-1` into `reset` / `push` / `flush`; wav is speakers-only.
 
 ## Next
 

@@ -36,9 +36,9 @@ namespace IBSO
 		public bool flush;
 		/** End of a mic listen: reset the stream. */
 		public bool session_end;
-		/** Stop partial for {@link flush} (from {@link Capture.end_file}). */
+		/** Stop partial for {@link flush} (from {@link Transcriber.flush}). */
 		public string flush_pending;
-		/** Emit {@link Transcriber.file_finished} after this flush. */
+		/** Emit {@link Transcriber.flushed} after this flush. */
 		public bool flush_finished;
 
 		public PcmChunk(owned float[] samples)
@@ -63,7 +63,7 @@ namespace IBSO
 
 		/**
 		 * @param pending stop partial to commit (may be empty)
-		 * @param finished emit file_finished after Idle
+		 * @param finished emit {@link Transcriber.flushed} after Idle
 		 */
 		public PcmChunk.for_flush(string pending = "", bool finished = true)
 		{

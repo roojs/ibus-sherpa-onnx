@@ -19,10 +19,12 @@
 namespace IBSO
 {
 	/**
-	 * {@link Transcriber} that optionally records the PCM ingress for debug Replay.
+	 * Public ASR entry: every op hits the {@link Session} recording log, then ASR.
 	 *
-	 * Base class is ASR only. This subclass owns debug {@link Session} save and
-	 * file-feed control ({@link begin_file} / {@link end_file} / {@link cancel_file}).
+	 * Callers construct this only — never {@link Transcriber}. When {@link save},
+	 * {@link Session.recording} is on for a listen and ''.chunks'' / ''.f32'' /
+	 * ''.pending'' mirror {@link push} / {@link reset} / {@link flush}. When save
+	 * is false, Session methods no-op and only ASR runs.
 	 *
 	 * == Example ==
 	 *
@@ -34,33 +36,21 @@ namespace IBSO
 	 *
 	 * var replay = new Capture(engine, config, false);
 	 * replay.load();
-	 * replay.begin_file(new Session.load(stem + ".wav"));
+	 * replay.reset();
 	 * replay.push(chunk);
-	 * replay.end_file();
+	 * replay.flush(pending);
 	 * }}}
 	 */
 	public class Capture : Transcriber
 	{
 		/**
-		 * When true, record sidecars on the way through. When false, relay only
-		 * (Replay / CLI / debug-recordings off).
+		 * When true, listen {@link start} opens a recording {@link Session}.
+		 * When false, Session log calls no-op.
 		 */
 		public bool save { get; construct; }
 
-		/**
-		 * Listen-session buffers when {@link save} is true (pcm, chunks,
-		 * endpoints, text, pending). Flushed on {@link stop}.
-		 */
+		/** Debug op / PCM log for the current listen (or idle empty session). */
 		private Session session = new Session();
-
-		/** True while Replay / CLI file feed is active (no mic). */
-		private bool file_feed = false;
-
-		/** Stop partial for {@link end_file} flush. */
-		private string file_pending = "";
-
-		/** Emit {@link Transcriber.file_finished} after end_file flush. */
-		private bool emit_file_finished = false;
 
 		/**
 		 * @param engine owning engine (IBus or stub)
@@ -75,125 +65,87 @@ namespace IBSO
 				save: save
 			);
 			this.language = engine.language;
+			this.on_mic_pcm = this.push;
 			this.endpoint.connect((text) => {
-				if (!this.save || text.strip() == "") {
-					return;
-				}
-				this.session.endpoint_off.append_val(this.session.accepted);
-				if (this.session.text != "") {
-					this.session.text += "\n";
-				}
-				this.session.text += text;
+				this.session.record_endpoint(text);
 			});
 		}
 
 		/**
-		 * Whether file feed is active (Replay / CLI).
+		 * Clear the recording log, then load the recognizer.
 		 *
-		 * @return true after {@link begin_file} until {@link end_file} / cancel
+		 * @throws GLib.Error if models / pipeline cannot be created
 		 */
-		public override bool file_active {
-			get {
-				return this.file_feed;
-			}
+		public void load() throws GLib.Error
+		{
+			this.session = new Session();
+			this.load_model();
 		}
 
 		/**
-		 * When {@link save} and listening, append pcm / chunk size / accepted,
-		 * then queue for ASR. Otherwise pass-through.
+		 * Log PCM, then queue for ASR (mic appsink, Replay, CLI).
 		 *
 		 * @param samples mono float PCM (ownership taken)
 		 */
-		public override void push(owned float[] samples)
+		public void push(owned float[] samples)
 		{
-			if (this.save && this.listening && samples.length > 0) {
-				var n = samples.length;
-				this.session.pcm.append_vals(samples, n);
-				this.session.chunk_n.append_val(n);
-				this.session.accepted += n;
-			}
-			base.push((owned) samples);
+			this.session.record_pcm(samples);
+			this.queue_pcm((owned) samples);
 		}
 
 		/**
-		 * Start mic. When {@link save}, opens a new recording {@link Session}
-		 * before base so the first {@link push} is included.
+		 * Log reset, then queue stream reset.
 		 */
-		public override void start()
+		public void reset()
 		{
-			if (this.save) {
-				this.session = new Session() {
+			this.session.record_reset();
+			this.queue_reset();
+		}
+
+		/**
+		 * Log flush + pending, then queue ASR flush.
+		 *
+		 * @param pending stop partial to commit (may be empty)
+		 */
+		public void flush(string pending = "")
+		{
+			this.session.record_flush(pending);
+			this.queue_flush(pending);
+		}
+
+		/**
+		 * Open a recording session when {@link save}, log reset, start mic.
+		 */
+		public void start()
+		{
+			this.session = this.save
+				? new Session() {
 					started = new GLib.DateTime.now_local(),
 					recording = true
-				};
-			}
-			base.start();
+				}
+				: new Session();
+			this.reset();
+			this.start_mic();
 		}
 
 		/**
-		 * Stop mic. When {@link save}, merges pending into the session and
-		 * flushes sidecars, then base stop.
+		 * Stop mic, log flush, persist sidecars when this listen was recorded.
 		 *
 		 * @param pending unfinished partial from the engine (may be empty)
 		 */
-		public override void stop(string pending = "")
+		public void stop(string pending = "")
 		{
 			if (!this.listening) {
 				return;
 			}
-			if (this.save) {
-				this.session.pending = pending.strip();
+			var recorded = this.session.recording;
+			this.stop_mic();
+			this.flush(pending);
+			if (recorded) {
 				var sess = this.session;
 				this.session = new Session();
 				sess.flush();
 			}
-			base.stop(pending);
-		}
-
-		/**
-		 * Enter file-feed mode. Stores stop pending; PCM via {@link push}.
-		 *
-		 * @param from_disk loaded session (pending used; pcm/chunks for Feed)
-		 */
-		public override void begin_file(Session from_disk)
-		{
-			this.cancel_file();
-			this.file_pending = from_disk.pending;
-			this.file_feed = true;
-			this.emit_file_finished = true;
-			this.feed_pos_s = 0.0;
-			this.last_text = "";
-			this.audio_queue.push(new PcmChunk.for_reset());
-		}
-
-		/**
-		 * Finish file feed: queue flush with pending, then {@link file_finished}.
-		 */
-		public override void end_file()
-		{
-			if (!this.file_feed) {
-				return;
-			}
-			var pending = this.file_pending;
-			var finished = this.emit_file_finished;
-			this.file_pending = "";
-			this.emit_file_finished = false;
-			this.file_feed = false;
-			this.audio_queue.push(new PcmChunk.for_flush(pending, finished));
-		}
-
-		/**
-		 * Cancel an in-progress file feed without {@link file_finished}.
-		 */
-		public override void cancel_file()
-		{
-			this.emit_file_finished = false;
-			this.file_pending = "";
-			if (!this.file_feed) {
-				return;
-			}
-			this.file_feed = false;
-			this.audio_queue.push(new PcmChunk.for_reset());
 		}
 	}
 }

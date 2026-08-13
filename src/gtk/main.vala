@@ -32,7 +32,7 @@ int main(string[] args)
 		);
 
 		var engine = new IBSO.Engine();
-		IBSO.Transcriber transcriber;
+		IBSO.Capture transcriber;
 		try {
 			var config = IBSO.Config.load();
 			var save = false;

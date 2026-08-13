@@ -186,7 +186,7 @@ namespace IBSO.Cli
 					save = false;
 				}
 			}
-			IBSO.Transcriber transcriber;
+			IBSO.Capture transcriber;
 			try {
 				transcriber = new IBSO.Capture(engine, config, save) {
 					model_dir = model_dir
@@ -208,7 +208,7 @@ namespace IBSO.Cli
 
 		private int run_wav(
 			GLib.ApplicationCommandLine command_line,
-			IBSO.Transcriber transcriber,
+			IBSO.Capture transcriber,
 			string language,
 			string model_dir
 		)
@@ -387,46 +387,79 @@ namespace IBSO.Cli
 				first_commit = false;
 				command_line.print("%s\n", text);
 			});
-			transcriber.file_finished.connect(() => {
+			transcriber.flushed.connect(() => {
 				loop.quit();
 			});
 
 			if (opt_fast_transcribe) {
-				transcriber.begin_file(run);
 				var off = 0;
-				var ci = 0;
 				var limit = pcm.length;
 				if (run.chunk_n.length > 0) {
 					limit = 0;
 					for (var i = 0; i < (int) run.chunk_n.length; i++) {
-						limit += run.chunk_n.index(i);
+						var cn = run.chunk_n.index(i);
+						if (cn > 0) {
+							limit += cn;
+						}
 					}
 					limit = int.min(limit, pcm.length);
 				}
-				while (off < limit) {
-					var cn = chunk_n;
-					if (ci < (int) run.chunk_n.length) {
-						cn = run.chunk_n.index(ci++);
+				if ((int) run.chunk_n.length == 0) {
+					transcriber.reset();
+					while (off < limit) {
+						var cn = int.min(chunk_n, limit - off);
+						var slice = new float[cn];
+						for (var i = 0; i < cn; i++) {
+							slice[i] = pcm[off + i];
+						}
+						transcriber.push((owned) slice);
+						off += cn;
 					}
-					cn = int.min(cn, limit - off);
-					var t0 = opt_from + off / 16000.0;
-					var t1 = opt_from + (off + cn) / 16000.0;
-					var sum = 0.0;
-					var slice = new float[cn];
-					for (var i = 0; i < cn; i++) {
-						slice[i] = pcm[off + i];
-						sum += (double) slice[i] * slice[i];
+					transcriber.flush(run.pending);
+				} else {
+					for (var i = 0; i < (int) run.chunk_n.length; i++) {
+						var cn = run.chunk_n.index(i);
+						if (cn == IBSO.Session.OP_RESET) {
+							transcriber.reset();
+							continue;
+						}
+						if (cn == IBSO.Session.OP_FLUSH) {
+							transcriber.flush(run.pending);
+							continue;
+						}
+						if (cn <= 0 || off >= limit) {
+							continue;
+						}
+						cn = int.min(cn, limit - off);
+						var t0 = opt_from + off / 16000.0;
+						var t1 = opt_from + (off + cn) / 16000.0;
+						var sum = 0.0;
+						var slice = new float[cn];
+						for (var j = 0; j < cn; j++) {
+							slice[j] = pcm[off + j];
+							sum += (double) slice[j] * slice[j];
+						}
+						GLib.debug("#chunk t=%.3f-%.3f n=%d rms=%.4f", t0, t1, cn, Math.sqrt(sum / cn));
+						transcriber.push((owned) slice);
+						off += cn;
 					}
-					GLib.debug("#chunk t=%.3f-%.3f n=%d rms=%.4f", t0, t1, cn, Math.sqrt(sum / cn));
-					transcriber.push((owned) slice);
-					off += cn;
+					/* Older captures: no OP_FLUSH in ''.chunks''. */
+					var saw_flush = false;
+					for (var i = 0; i < (int) run.chunk_n.length; i++) {
+						if (run.chunk_n.index(i) == IBSO.Session.OP_FLUSH) {
+							saw_flush = true;
+							break;
+						}
+					}
+					if (!saw_flush) {
+						transcriber.flush(run.pending);
+					}
 				}
-				transcriber.end_file();
 				loop.run();
 				return 0;
 			}
 
-			/* Default: same GStreamer path as Browse Replay (ASR uses pcm / ''.f32''). */
+			/* Default: same Browse Replay path (speakers + Capture op-log feed). */
 			var path = opt_wav;
 			string? tmp = null;
 			if (opt_from > 0.0 || opt_to >= 0.0) {
@@ -451,7 +484,7 @@ namespace IBSO.Cli
 
 		private int run_script(
 			GLib.ApplicationCommandLine command_line,
-			IBSO.Transcriber transcriber,
+			IBSO.Capture transcriber,
 			string language,
 			string model_dir
 		)
@@ -607,7 +640,7 @@ namespace IBSO.Cli
 
 		private int run_mic(
 			GLib.ApplicationCommandLine command_line,
-			IBSO.Transcriber transcriber,
+			IBSO.Capture transcriber,
 			string language,
 			string model_dir
 		)

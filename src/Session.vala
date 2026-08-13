@@ -21,8 +21,9 @@ namespace IBSO
 	/**
 	 * One listen-session buffer for debug recordings ({@link Transcriber}).
 	 *
-	 * Live: {@link Transcriber} accumulates PCM / chunks / endpoints when
-	 * ''save'', then {@link flush} on stop. Replay / CLI: {@link Session.load}.
+	 * Live: {@link Capture} logs {@link Capture.push} / {@link Capture.reset} /
+	 * {@link Capture.flush} into this buffer, then {@link flush} on stop.
+	 * Replay / CLI: {@link Session.load} and play the same ops.
 	 *
 	 * == Example ==
 	 *
@@ -35,7 +36,9 @@ namespace IBSO
 	 * sess.flush();
 	 *
 	 * var recorded = new Session.load(stem + ".wav");
-	 * transcriber.begin_file(recorded);
+	 * capture.reset();
+	 * capture.push(chunk);
+	 * capture.flush(recorded.pending);
 	 * }}}
 	 */
 	public class Session : GLib.Object
@@ -46,9 +49,17 @@ namespace IBSO
 		public GLib.Array<float> pcm = new GLib.Array<float>(false, false, (uint) sizeof(float));
 
 		/**
-		 * Sample counts per live ''accept_waveform'' (''.chunks'').
+		 * Sample counts / control ops per live ingress (''.chunks'').
+		 * Positive = {@link Capture.push} size; {@link OP_RESET} / {@link OP_FLUSH}
+		 * mark {@link Capture.reset} / {@link Capture.flush}.
 		 */
 		public GLib.Array<int> chunk_n = new GLib.Array<int>(false, false, (uint) sizeof(int));
+
+		/** ''.chunks'' sentinel: {@link Capture.reset}. */
+		public const int OP_RESET = 0;
+
+		/** ''.chunks'' sentinel: {@link Capture.flush} (see {@link pending}). */
+		public const int OP_FLUSH = -1;
 
 		/**
 		 * Sample positions where live endpoint reset (''.endpoints'').
@@ -69,6 +80,159 @@ namespace IBSO
 
 		/** Pending partial from stop(). */
 		public string pending { get; set; default = ""; }
+
+		/**
+		 * Log a {@link Capture.push} of ''n'' samples (no-op if not {@link recording}).
+		 *
+		 * @param n sample count (must be &gt; 0)
+		 */
+		public void record_push(int n)
+		{
+			if (!this.recording || n <= 0) {
+				return;
+			}
+			this.chunk_n.append_val(n);
+			this.accepted += n;
+		}
+
+		/**
+		 * Append PCM and a push op (no-op if not {@link recording}).
+		 *
+		 * @param samples mono float PCM
+		 */
+		public void record_pcm(float[] samples)
+		{
+			if (!this.recording || samples.length == 0) {
+				return;
+			}
+			var n = samples.length;
+			this.pcm.append_vals(samples, n);
+			this.record_push(n);
+		}
+
+		/** Log a {@link Capture.reset} (no-op if not {@link recording}). */
+		public void record_reset()
+		{
+			if (!this.recording) {
+				return;
+			}
+			var op = OP_RESET;
+			this.chunk_n.append_val(op);
+		}
+
+		/**
+		 * Log a {@link Capture.flush} and store ''pending'' (no-op if not recording).
+		 *
+		 * @param pending stop partial (may be empty)
+		 */
+		public void record_flush(string pending)
+		{
+			if (!this.recording) {
+				return;
+			}
+			this.pending = pending;
+			var op = OP_FLUSH;
+			this.chunk_n.append_val(op);
+		}
+
+		/**
+		 * Log a committed endpoint line (no-op if not {@link recording}).
+		 *
+		 * @param text endpoint transcript
+		 */
+		public void record_endpoint(string text)
+		{
+			if (!this.recording || text.strip() == "") {
+				return;
+			}
+			this.endpoint_off.append_val(this.accepted);
+			if (this.text != "") {
+				this.text += "\n";
+			}
+			this.text += text;
+		}
+
+		/**
+		 * Walk this session’s op log into ''capture'' in order: {@link OP_RESET} →
+		 * {@link Capture.reset}, positive → {@link Capture.push} from {@link pcm},
+		 * {@link OP_FLUSH} → {@link Capture.flush}({@link pending}). No pacing —
+		 * callers that need realtime (Browse speakers) pace around
+		 * {@link feed_next}.
+		 *
+		 * @param capture ASR target (usually ''save: false'')
+		 */
+		public void feed(Capture capture)
+		{
+			var op_i = 0;
+			var pcm_off = 0;
+			while (this.feed_next(capture, ref op_i, ref pcm_off)) {
+			}
+		}
+
+		/**
+		 * Apply the next op from {@link chunk_n}. Returns false when the log is
+		 * finished (flush issued or no more ops).
+		 *
+		 * @param capture ASR target
+		 * @param op_i index into {@link chunk_n} (updated)
+		 * @param pcm_off sample offset into {@link pcm} (updated)
+		 * @return true if more ops may remain
+		 */
+		public bool feed_next(Capture capture, ref int op_i, ref int pcm_off)
+		{
+			var n_ops = (int) this.chunk_n.length;
+			if (n_ops == 0) {
+				/* Older captures: no ''.chunks'' — one reset, whole ''.f32'', flush. */
+				if (op_i > 0) {
+					return false;
+				}
+				op_i = 1;
+				capture.reset();
+				var n = (int) this.pcm.length;
+				if (n > 0) {
+					var slice = new float[n];
+					for (var i = 0; i < n; i++) {
+						slice[i] = this.pcm.index(i);
+					}
+					pcm_off = n;
+					capture.push((owned) slice);
+				}
+				capture.flush(this.pending);
+				return false;
+			}
+
+			while (op_i < n_ops) {
+				var cn = this.chunk_n.index(op_i);
+				op_i++;
+				if (cn == OP_RESET) {
+					capture.reset();
+					return true;
+				}
+				if (cn == OP_FLUSH) {
+					capture.flush(this.pending);
+					return false;
+				}
+				if (cn <= 0) {
+					continue;
+				}
+				var left = (int) this.pcm.length - pcm_off;
+				if (left <= 0) {
+					continue;
+				}
+				cn = int.min(cn, left);
+				var slice = new float[cn];
+				for (var i = 0; i < cn; i++) {
+					slice[i] = this.pcm.index(pcm_off + i);
+				}
+				pcm_off += cn;
+				capture.push((owned) slice);
+				return true;
+			}
+
+			/* Older captures: ops without OP_FLUSH. */
+			capture.flush(this.pending);
+			return false;
+		}
 
 		/**
 		 * Load a saved listen from sibling ''.f32'' / ''.chunks'' / ''.endpoints'' /

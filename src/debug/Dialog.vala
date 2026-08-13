@@ -35,7 +35,7 @@ namespace IBSO.Debug
 		private Stars original_stars;
 		private Stars output_stars;
 		private HistoryItem? current;
-		private IBSO.Transcriber? transcriber;
+		private IBSO.Capture? transcriber;
 		private Replay? replay;
 		private bool replaying;
 		/** Committed endpoint texts for this Replay (newline between). */
@@ -244,7 +244,7 @@ namespace IBSO.Debug
 		}
 
 		/**
-		 * Load {@link Transcriber} once from current prefs/pack (lazy on first Replay).
+		 * Load {@link IBSO.Capture} once from current prefs/pack (lazy on first Replay).
 		 */
 		private void ensure_transcriber()
 		{
@@ -321,7 +321,7 @@ namespace IBSO.Debug
 				this.output_buf.place_cursor(end);
 				this.output_view.scroll_mark_onscreen(this.output_buf.get_insert());
 			});
-			this.transcriber.file_finished.connect(() => {
+			this.transcriber.flushed.connect(() => {
 				if (!this.replaying) {
 					return;
 				}

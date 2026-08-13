@@ -42,7 +42,7 @@ namespace IBSO
 		public static uint toggle_mods = 0;
 
 		/** Recognizer + mic for this engine instance (null if no pack installed). */
-		private Transcriber? transcriber;
+		private Capture? transcriber;
 
 		private IBus.Property prop;
 		private IBus.PropList props;

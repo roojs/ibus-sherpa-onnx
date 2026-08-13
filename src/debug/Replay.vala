@@ -19,11 +19,10 @@
 namespace IBSO.Debug
 {
 	/**
-	 * Synced file→speaker→ASR Replay for a debug ''.wav''.
-	 *
-	 * Owns the GStreamer tee pipeline and {@link Feed}; feeds ASR via
-	 * {@link IBSO.Transcriber.push}. Speaker plays ''.wav''; ASR uses the
-	 * loaded {@link IBSO.Session} floats (''.f32'') paced by appsink.
+	 * Browse / CLI Replay: speakers play the ''.wav''; ASR walks the
+	 * saved Capture op log (''.chunks'' + ''.f32'' + ''.pending'') into
+	 * {@link IBSO.Capture.reset} / {@link IBSO.Capture.push} /
+	 * {@link IBSO.Capture.flush} — same bytes and ops as live.
 	 *
 	 * == Example ==
 	 *
@@ -36,23 +35,34 @@ namespace IBSO.Debug
 	 */
 	public class Replay : GLib.Object
 	{
-		public IBSO.Transcriber transcriber { get; construct; }
+		public IBSO.Capture transcriber { get; construct; }
 
 		private Gst.Pipeline? pipeline = null;
 		private ulong bus_id = 0;
-		private Feed? feed = null;
-		/** Live accept_waveform floats when ''.f32'' was loaded (or Session pcm). */
-		private float[]? live_pcm = null;
-		private int live_off = 0;
+		/** Saved ''.f32'' floats (ownership for this Replay). */
+		private float[]? pcm = null;
+		/** Saved ''.chunks'' ops (positive push sizes, {@link IBSO.Session.OP_RESET}, {@link IBSO.Session.OP_FLUSH}). */
+		private int[]? ops = null;
+		private int op_i = 0;
+		private int pcm_off = 0;
+		/** True while this Replay is feeding ASR. */
+		private bool feeding = false;
+		/** Stop partial from the loaded session (passed to {@link IBSO.Capture.flush}). */
+		private string pending = "";
+		/** Wall-clock pacing: monotonic µs when feed started. */
+		private int64 start_mono_us = 0;
+		/** Audio time already pushed (µs at 16 kHz). */
+		private int64 audio_us = 0;
+		private uint timeout_id = 0;
 
-		public Replay(IBSO.Transcriber transcriber)
+		public Replay(IBSO.Capture transcriber)
 		{
 			GLib.Object(transcriber: transcriber);
 		}
 
 		/**
-		 * Play ''path'' and feed ASR in lockstep. Uses ''recorded'' when given,
-		 * otherwise ''new Session.load(path)'' for sibling sidecars.
+		 * Play ''path'' on speakers and feed ASR from the Capture op log.
+		 * Uses ''recorded'' when given, otherwise ''new Session.load(path)''.
 		 *
 		 * @param path absolute mono 16 kHz WAV (speakers)
 		 * @param recorded optional pre-loaded / sliced session; null → load from ''path''
@@ -61,86 +71,43 @@ namespace IBSO.Debug
 		{
 			this.stop();
 			var sess = recorded ?? new IBSO.Session.load(path);
-			var n_chunks = (int) sess.chunk_n.length;
-			int[]? sizes = null;
-			if (n_chunks > 0) {
-				sizes = new int[n_chunks];
-				GLib.Memory.copy((void*) sizes, sess.chunk_n.data, n_chunks * sizeof(int));
+			var n_ops = (int) sess.chunk_n.length;
+			if (n_ops > 0) {
+				this.ops = new int[n_ops];
+				GLib.Memory.copy((void*) this.ops, sess.chunk_n.data, n_ops * sizeof(int));
+			} else {
+				this.ops = null;
 			}
-			this.feed = sizes != null ? new Feed(sizes) : null;
 			var n_pcm = (int) sess.pcm.length;
 			if (n_pcm > 0) {
-				this.live_pcm = new float[n_pcm];
-				GLib.Memory.copy((void*) this.live_pcm, sess.pcm.data, n_pcm * sizeof(float));
+				this.pcm = new float[n_pcm];
+				GLib.Memory.copy((void*) this.pcm, sess.pcm.data, n_pcm * sizeof(float));
 			} else {
-				this.live_pcm = null;
+				this.pcm = null;
 			}
-			this.live_off = 0;
-			GLib.debug("#replay path=%s chunks=%d f32=%d endpoints=%u pending=%s", path,
-				n_chunks, n_pcm, sess.endpoint_off.length,
-				sess.pending != "" ? "yes" : "no");
-			this.transcriber.begin_file(sess);
+			this.op_i = 0;
+			this.pcm_off = 0;
+			this.audio_us = 0;
+			this.pending = sess.pending;
+			GLib.debug("#replay path=%s ops=%d f32=%d pending=%s", path,
+				n_ops, n_pcm, this.pending != "" ? "yes" : "no");
+			this.feeding = true;
+			this.start_mono_us = GLib.get_monotonic_time();
 
 			try {
 				this.pipeline = (Gst.Pipeline) Gst.parse_launch(
 					"filesrc name=src ! wavparse ! audioconvert ! audioresample ! "
-					+ "audio/x-raw,format=F32LE,channels=1,rate=16000 ! tee name=t "
-					+ "t. ! queue ! autoaudiosink sync=true "
-					+ "t. ! queue max-size-buffers=0 max-size-time=0 max-size-bytes=0 ! "
-					+ "appsink name=sink emit-signals=true max-buffers=200 drop=false sync=true"
+					+ "audio/x-raw,format=F32LE,channels=1,rate=16000 ! "
+					+ "autoaudiosink sync=true"
 				);
 			} catch (GLib.Error err) {
 				GLib.warning("replay pipeline: %s", err.message);
-				this.transcriber.cancel_file();
-				this.feed = null;
-				this.live_pcm = null;
+				this.feeding = false;
+				this.ops = null;
+				this.pcm = null;
 				return;
 			}
 			this.pipeline.get_by_name("src").set("location", path);
-			var sink = (Gst.App.Sink) this.pipeline.get_by_name("sink");
-			sink.new_sample.connect(() => {
-				var sample = sink.pull_sample();
-				if (sample == null) {
-					return Gst.FlowReturn.ERROR;
-				}
-				if (!this.transcriber.file_active) {
-					return Gst.FlowReturn.OK;
-				}
-				var buffer = sample.get_buffer();
-				if (buffer == null) {
-					return Gst.FlowReturn.ERROR;
-				}
-				Gst.MapInfo map;
-				if (!buffer.map(out map, Gst.MapFlags.READ)) {
-					return Gst.FlowReturn.ERROR;
-				}
-				if (map.size >= sizeof(float)) {
-					var n = (int) (map.size / sizeof(float));
-					float[] samples;
-					if (this.live_pcm != null) {
-						n = int.min(n, this.live_pcm.length - this.live_off);
-						samples = new float[n];
-						for (var i = 0; i < n; i++) {
-							samples[i] = this.live_pcm[this.live_off + i];
-						}
-						this.live_off += n;
-					} else {
-						samples = new float[n];
-						GLib.Memory.copy((void*) samples, map.data, map.size);
-					}
-					if (this.feed != null) {
-						this.feed.push(samples);
-						float[]? slice;
-						while ((slice = this.feed.take()) != null) {
-							this.transcriber.push((owned) slice);
-						}
-					} else {
-						this.transcriber.push((owned) samples);
-					}
-				}
-				buffer.unmap(map);
-				return Gst.FlowReturn.OK;
-			});
 			var bus = this.pipeline.get_bus();
 			bus.add_signal_watch();
 			this.bus_id = bus.message.connect((b, message) => {
@@ -155,33 +122,28 @@ namespace IBSO.Debug
 					GLib.warning("replay: %s (%s)", err.message, dbg);
 				}
 				this.drop_pipeline();
-				if (this.transcriber.file_active) {
-					/* Only accept through saved chunk sizes — no leftover drain. */
-					if (this.feed != null) {
-						this.feed.finish();
-						float[]? slice;
-						while ((slice = this.feed.take()) != null) {
-							this.transcriber.push((owned) slice);
-						}
-						this.feed = null;
-					}
-					this.live_pcm = null;
-					this.transcriber.end_file();
-				}
 			});
 			this.pipeline.set_state(Gst.State.PLAYING);
+			this.schedule_tick(0);
 		}
 
 		/**
-		 * Cancel an in-progress Replay (no {@link IBSO.Transcriber.file_finished}).
+		 * Cancel an in-progress Replay (no {@link flushed} from Capture).
 		 */
 		public void stop()
 		{
+			this.cancel_tick();
 			this.drop_pipeline();
-			this.feed = null;
-			this.live_pcm = null;
-			this.live_off = 0;
-			this.transcriber.cancel_file();
+			this.ops = null;
+			this.pcm = null;
+			this.op_i = 0;
+			this.pcm_off = 0;
+			this.audio_us = 0;
+			this.pending = "";
+			if (this.feeding) {
+				this.feeding = false;
+				this.transcriber.reset();
+			}
 		}
 
 		/** Disconnect bus and null the pipeline (shared by stop / EOS). */
@@ -198,6 +160,125 @@ namespace IBSO.Debug
 			bus.remove_signal_watch();
 			this.pipeline.set_state(Gst.State.NULL);
 			this.pipeline = null;
+		}
+
+		private void cancel_tick()
+		{
+			if (this.timeout_id != 0) {
+				GLib.Source.remove(this.timeout_id);
+				this.timeout_id = 0;
+			}
+		}
+
+		private void schedule_tick(uint delay_ms)
+		{
+			this.cancel_tick();
+			this.timeout_id = GLib.Timeout.add(delay_ms, () => {
+				this.timeout_id = 0;
+				this.tick();
+				return GLib.Source.REMOVE;
+			});
+		}
+
+		/**
+		 * Walk ''.chunks'' in order: reset / push / flush. Push ops are paced
+		 * to 16 kHz wall time so Output tracks the speakers.
+		 */
+		private void tick()
+		{
+			if (!this.feeding) {
+				return;
+			}
+
+			/* No op log: one reset, then fixed-size pushes from ''.f32'', then flush. */
+			if (this.ops == null || this.ops.length == 0) {
+				if (this.pcm == null || this.pcm.length == 0) {
+					this.finish_feed(true);
+					return;
+				}
+				if (this.pcm_off == 0) {
+					this.transcriber.reset();
+				}
+				var chunk = 1600; /* 100 ms @ 16 kHz */
+				while (this.pcm_off < this.pcm.length) {
+					var due = this.start_mono_us + this.audio_us;
+					var now = GLib.get_monotonic_time();
+					if (now < due) {
+						var delay_ms = (uint) int64.max(1, (due - now) / 1000);
+						this.schedule_tick(delay_ms);
+						return;
+					}
+					var cn = int.min(chunk, this.pcm.length - this.pcm_off);
+					this.push_slice(cn);
+				}
+				this.finish_feed(true);
+				return;
+			}
+
+			while (this.op_i < this.ops.length) {
+				var cn = this.ops[this.op_i];
+				if (cn == IBSO.Session.OP_RESET) {
+					this.op_i++;
+					this.transcriber.reset();
+					continue;
+				}
+				if (cn == IBSO.Session.OP_FLUSH) {
+					this.op_i++;
+					this.finish_feed(true);
+					return;
+				}
+				if (cn <= 0) {
+					this.op_i++;
+					continue;
+				}
+				if (this.pcm == null || this.pcm_off >= this.pcm.length) {
+					this.op_i++;
+					continue;
+				}
+				var due = this.start_mono_us + this.audio_us;
+				var now = GLib.get_monotonic_time();
+				if (now < due) {
+					var delay_ms = (uint) int64.max(1, (due - now) / 1000);
+					this.schedule_tick(delay_ms);
+					return;
+				}
+				cn = int.min(cn, this.pcm.length - this.pcm_off);
+				this.op_i++;
+				this.push_slice(cn);
+			}
+
+			/* Older captures: no OP_FLUSH in ''.chunks''. */
+			this.finish_feed(true);
+		}
+
+		private void push_slice(int cn)
+		{
+			var slice = new float[cn];
+			for (var i = 0; i < cn; i++) {
+				slice[i] = this.pcm[this.pcm_off + i];
+			}
+			this.pcm_off += cn;
+			this.audio_us += ((int64) cn * 1000000) / 16000;
+			this.transcriber.push((owned) slice);
+		}
+
+		/**
+		 * End ASR feed; optionally {@link IBSO.Capture.flush} (EOS path).
+		 * Speakers may still be draining — pipeline is left until EOS / stop.
+		 */
+		private void finish_feed(bool do_flush)
+		{
+			this.cancel_tick();
+			if (!this.feeding) {
+				return;
+			}
+			this.feeding = false;
+			this.ops = null;
+			this.pcm = null;
+			if (do_flush) {
+				this.transcriber.flush(this.pending);
+			}
+			this.pending = "";
 		}
 	}
 }

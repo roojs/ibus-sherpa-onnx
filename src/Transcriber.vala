@@ -18,32 +18,26 @@
 
 namespace IBSO
 {
+	/** Mic appsink → {@link Capture.push}. */
+	public delegate void MicPcm(owned float[] samples);
+
 	/**
-	 * Streaming ASR: mic or file PCM → sherpa-onnx online transducer.
+	 * Streaming ASR core: mic or pushed PCM → sherpa-onnx online transducer.
 	 *
-	 * Debug recording lives on {@link Capture}. This class is accept / decode /
-	 * endpoint / stop only. Callers construct {@link Capture} (save on or off).
+	 * Not constructed by callers — use {@link Capture}. Ops are protected;
+	 * {@link Capture} is the public surface.
 	 *
-	 * {{{
-	 *   var t = new Capture(engine, config, save) {
-	 *     model_dir = dir,
-	 *     pack = pack
-	 *   };
-	 *   t.load();
-	 * }}}
-	 *
-	 * Threads: {@link push} / appsink enqueue {@link PcmChunk}; one worker owns
-	 * sherpa; Idle marshals text to main. No mutexes — queue + worker only.
+	 * Threads: appsink calls {@link Capture.push} via {@link on_mic_pcm}; one
+	 * worker owns sherpa; Idle marshals text to main. No mutexes — queue + worker only.
 	 *
 	 * @since 0.2
 	 */
-	public abstract class Transcriber : GLib.Object
+	public class Transcriber : GLib.Object
 	{
 		private SherpaOnnx.OnlineRecognizer recognizer;
 		private SherpaOnnx.OnlineStream stream;
 		private Gst.Pipeline pipeline;
-		/** PCM / control items for the ASR worker (mic, Replay, CLI --wav). */
-		public GLib.AsyncQueue<PcmChunk> audio_queue { get; private set; }
+		private GLib.AsyncQueue<PcmChunk> audio_queue;
 		private bool worker_running = false;
 		/** Worker-only current hypothesis (main reads {@link last_text} via Idle). */
 		private string hypothesis = "";
@@ -56,9 +50,10 @@ namespace IBSO
 		private bool output_mute_held = false;
 
 		/**
-		 * True while file feed is active (Replay / CLI). Implemented by {@link Capture}.
+		 * Mic appsink PCM handler. {@link Capture} sets this to {@link Capture.push}
+		 * so live mic shares the same path as Replay.
 		 */
-		public abstract bool file_active { get; }
+		protected MicPcm? on_mic_pcm;
 
 		/** Directory with int8 ONNX + tokens.txt (set before {@link load}). */
 		public string model_dir { get; set; default = ""; }
@@ -94,8 +89,8 @@ namespace IBSO
 		public int last_partial_count { get; private set; default = 0; }
 
 		/**
-		 * Seconds of file PCM accepted so far during file feed / Replay
-		 * (worker updates; CLI reads on Idle signals).
+		 * Seconds of PCM accepted via {@link push} while not {@link listening}
+		 * (Replay / CLI; worker updates).
 		 */
 		public double feed_pos_s { get; set; default = 0.0; }
 
@@ -114,17 +109,16 @@ namespace IBSO
 		public signal void endpoint(string text);
 
 		/**
-		 * File feed finished (flush Idle). Browse Replay and CLI --wav.
-		 * Main loop.
+		 * {@link flush} Idle finished (main loop). Replay / CLI await this.
 		 */
-		public signal void file_finished();
+		public signal void flushed();
 
 		/**
 		 * Load Nemotron online recognizer from {@link model_dir}.
 		 *
 		 * @throws GLib.IOError if recognizer, stream, or pipeline cannot be created
 		 */
-		public void load() throws GLib.Error
+		protected void load_model() throws GLib.Error
 		{
 			this.segment_start_us = GLib.get_monotonic_time();
 			this.stream_language = "";
@@ -235,15 +229,15 @@ namespace IBSO
 				/* Match listen stop(): commit stop partial when set, else
 				 * current hypothesis — never input_finished() (changes the line). */
 				var commit = chunk.flush_pending != "" ? chunk.flush_pending : this.hypothesis;
-				var finished = chunk.flush_finished;
+				var emit_done = chunk.flush_finished;
 				GLib.Idle.add(() => {
 					this.last_text = "";
 					if (commit != "") {
 						this.engine.on_endpoint(commit);
 						this.endpoint(commit);
 					}
-					if (finished) {
-						this.file_finished();
+					if (emit_done) {
+						this.flushed();
 					}
 					return GLib.Source.REMOVE;
 				});
@@ -256,11 +250,9 @@ namespace IBSO
 				return;
 			}
 
-			if (!this.listening && !this.file_active) {
-				return;
-			}
-
-			if (this.file_active && chunk.samples.length > 0) {
+			/* Queue is the gate: callers must not push when idle. Mic appsink
+			 * checks {@link listening}; Replay/CLI own their feed lifecycle. */
+			if (!this.listening && chunk.samples.length > 0) {
 				this.feed_pos_s += chunk.samples.length / 16000.0;
 			}
 			this.stream.accept_waveform(16000, chunk.samples);
@@ -274,9 +266,6 @@ namespace IBSO
 				this.partial_updates++;
 				var copy = result.text;
 				GLib.Idle.add(() => {
-					if (!this.listening && !this.file_active) {
-						return GLib.Source.REMOVE;
-					}
 					this.last_text = copy;
 					this.engine.on_partial(copy);
 					this.partial(copy);
@@ -303,9 +292,6 @@ namespace IBSO
 			var wall_s = (GLib.get_monotonic_time() - this.segment_start_us) / 1000000.0;
 			var partials = this.partial_updates;
 			GLib.Idle.add(() => {
-				if (!this.listening && !this.file_active) {
-					return GLib.Source.REMOVE;
-				}
 				this.last_token_count = (int) result.count;
 				this.last_audio_s = 0.0;
 				if (result.timestamps != null && result.count > 0) {
@@ -341,7 +327,7 @@ namespace IBSO
 				return Gst.FlowReturn.ERROR;
 			}
 
-			if (!this.listening && !this.file_active) {
+			if (!this.listening) {
 				return Gst.FlowReturn.OK;
 			}
 
@@ -358,50 +344,54 @@ namespace IBSO
 			if (map.size >= sizeof(float)) {
 				var samples = new float[map.size / sizeof(float)];
 				GLib.Memory.copy((void*) samples, map.data, map.size);
-				this.push((owned) samples);
+				if (this.on_mic_pcm != null) {
+					this.on_mic_pcm((owned) samples);
+				} else {
+					this.queue_pcm((owned) samples);
+				}
 			}
 			buffer.unmap(map);
 			return Gst.FlowReturn.OK;
 		}
 
 		/**
-		 * Queue PCM for the ASR worker (mic / Replay / {@link Capture}).
+		 * Queue PCM for the ASR worker.
 		 *
 		 * @param samples mono float PCM (ownership taken)
 		 */
-		public virtual void push(owned float[] samples)
+		protected void queue_pcm(owned float[] samples)
 		{
 			this.audio_queue.push(new PcmChunk((owned) samples));
 		}
 
 		/**
-		 * Enter file-feed mode (Replay / CLI). Implemented by {@link Capture}.
+		 * Queue a stream reset (before feeding PCM from Replay / CLI).
+		 */
+		protected void queue_reset()
+		{
+			this.feed_pos_s = 0.0;
+			this.last_text = "";
+			this.audio_queue.push(new PcmChunk.for_reset());
+		}
+
+		/**
+		 * Queue a flush: commit ''pending'' (or current hypothesis), then
+		 * {@link flushed}.
 		 *
-		 * @param from_disk loaded session (pending / pcm / chunks for the caller)
+		 * @param pending stop partial to commit (may be empty)
 		 */
-		public abstract void begin_file(Session from_disk);
+		protected void queue_flush(string pending = "")
+		{
+			this.audio_queue.push(new PcmChunk.for_flush(pending, true));
+		}
 
-		/**
-		 * Finish file feed (flush + {@link file_finished}). Implemented by {@link Capture}.
-		 */
-		public abstract void end_file();
-
-		/**
-		 * Cancel an in-progress file feed without {@link file_finished}.
-		 * Implemented by {@link Capture}.
-		 */
-		public abstract void cancel_file();
-
-		/** Start mic capture (main loop). Idempotent if already listening. */
-		public virtual void start()
+		/** Start mic capture (main loop). Idempotent. Caller queues {@link queue_reset} first. */
+		protected void start_mic()
 		{
 			if (this.listening) {
 				return;
 			}
-			this.cancel_file();
-			this.last_text = "";
 			this.listening = true;
-			this.audio_queue.push(new PcmChunk.for_reset());
 			if (this.config.key_file.get_boolean("general", "mute-speakers")) {
 				this.output_mute(true);
 			}
@@ -409,11 +399,10 @@ namespace IBSO
 		}
 
 		/**
-		 * Stop mic capture and queue a stream reset (main loop). Idempotent.
-		 *
-		 * @param pending unused here; {@link Capture} records it when saving
+		 * Stop mic capture only (main loop). Idempotent. Caller queues
+		 * {@link queue_flush} / session end as needed.
 		 */
-		public virtual void stop(string pending = "")
+		protected void stop_mic()
 		{
 			if (!this.listening) {
 				return;
@@ -422,7 +411,6 @@ namespace IBSO
 			this.pipeline.set_state(Gst.State.NULL);
 			this.output_mute(false);
 			this.last_text = "";
-			this.audio_queue.push(new PcmChunk.for_session_end());
 		}
 
 		/**
