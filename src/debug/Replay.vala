@@ -19,10 +19,8 @@
 namespace IBSO.Debug
 {
 	/**
-	 * Browse / CLI Replay: speakers play the ''.wav''; ASR walks the
-	 * saved Capture op log (''.chunks'' + ''.f32'' + ''.pending'') into
-	 * {@link IBSO.Capture.reset} / {@link IBSO.Capture.push} /
-	 * {@link IBSO.Capture.flush} — same bytes and ops as live.
+	 * Browse / CLI Replay: speakers play the ''.wav''; {@link IBSO.Session.feed_next}
+	 * walks the Capture op log into ASR — same bytes and ops as live.
 	 *
 	 * == Example ==
 	 *
@@ -39,16 +37,11 @@ namespace IBSO.Debug
 
 		private Gst.Pipeline? pipeline = null;
 		private ulong bus_id = 0;
-		/** Saved ''.f32'' floats (ownership for this Replay). */
-		private float[]? pcm = null;
-		/** Saved ''.chunks'' ops (positive push sizes, {@link IBSO.Session.OP_RESET}, {@link IBSO.Session.OP_FLUSH}). */
-		private int[]? ops = null;
+		private IBSO.Session? session = null;
 		private int op_i = 0;
 		private int pcm_off = 0;
 		/** True while this Replay is feeding ASR. */
 		private bool feeding = false;
-		/** Stop partial from the loaded session (passed to {@link IBSO.Capture.flush}). */
-		private string pending = "";
 		/** Wall-clock pacing: monotonic µs when feed started. */
 		private int64 start_mono_us = 0;
 		/** Audio time already pushed (µs at 16 kHz). */
@@ -70,27 +63,13 @@ namespace IBSO.Debug
 		public void start(string path, IBSO.Session? recorded = null)
 		{
 			this.stop();
-			var sess = recorded ?? new IBSO.Session.load(path);
-			var n_ops = (int) sess.chunk_n.length;
-			if (n_ops > 0) {
-				this.ops = new int[n_ops];
-				GLib.Memory.copy((void*) this.ops, sess.chunk_n.data, n_ops * sizeof(int));
-			} else {
-				this.ops = null;
-			}
-			var n_pcm = (int) sess.pcm.length;
-			if (n_pcm > 0) {
-				this.pcm = new float[n_pcm];
-				GLib.Memory.copy((void*) this.pcm, sess.pcm.data, n_pcm * sizeof(float));
-			} else {
-				this.pcm = null;
-			}
+			this.session = recorded ?? new IBSO.Session.load(path);
 			this.op_i = 0;
 			this.pcm_off = 0;
 			this.audio_us = 0;
-			this.pending = sess.pending;
-			GLib.debug("#replay path=%s ops=%d f32=%d pending=%s", path,
-				n_ops, n_pcm, this.pending != "" ? "yes" : "no");
+			GLib.debug("#replay path=%s ops=%u f32=%u pending=%s", path,
+				this.session.chunk_n.length, this.session.pcm.length,
+				this.session.pending != "" ? "yes" : "no");
 			this.feeding = true;
 			this.start_mono_us = GLib.get_monotonic_time();
 
@@ -103,8 +82,7 @@ namespace IBSO.Debug
 			} catch (GLib.Error err) {
 				GLib.warning("replay pipeline: %s", err.message);
 				this.feeding = false;
-				this.ops = null;
-				this.pcm = null;
+				this.session = null;
 				return;
 			}
 			this.pipeline.get_by_name("src").set("location", path);
@@ -134,12 +112,10 @@ namespace IBSO.Debug
 		{
 			this.cancel_tick();
 			this.drop_pipeline();
-			this.ops = null;
-			this.pcm = null;
+			this.session = null;
 			this.op_i = 0;
 			this.pcm_off = 0;
 			this.audio_us = 0;
-			this.pending = "";
 			if (this.feeding) {
 				this.feeding = false;
 				this.transcriber.reset();
@@ -181,104 +157,48 @@ namespace IBSO.Debug
 		}
 
 		/**
-		 * Walk ''.chunks'' in order: reset / push / flush. Push ops are paced
-		 * to 16 kHz wall time so Output tracks the speakers.
+		 * Pace {@link IBSO.Session.feed_next} to 16 kHz wall time so Output
+		 * tracks the speakers. Reset / flush run immediately.
 		 */
 		private void tick()
 		{
-			if (!this.feeding) {
+			if (!this.feeding || this.session == null) {
 				return;
 			}
 
-			/* No op log: one reset, then fixed-size pushes from ''.f32'', then flush. */
-			if (this.ops == null || this.ops.length == 0) {
-				if (this.pcm == null || this.pcm.length == 0) {
-					this.finish_feed(true);
+			while (this.feeding && this.session != null) {
+				var due = this.start_mono_us + this.audio_us;
+				var now = GLib.get_monotonic_time();
+				if (this.audio_us > 0 && now < due) {
+					var delay_ms = (uint) int64.max(1, (due - now) / 1000);
+					this.schedule_tick(delay_ms);
 					return;
 				}
-				if (this.pcm_off == 0) {
-					this.transcriber.reset();
+
+				var before_off = this.pcm_off;
+				var more = this.session.feed_next(this.transcriber, ref this.op_i,
+					ref this.pcm_off);
+				var pushed = this.pcm_off - before_off;
+				if (pushed > 0) {
+					this.audio_us += ((int64) pushed * 1000000) / 16000;
 				}
-				var chunk = 1600; /* 100 ms @ 16 kHz */
-				while (this.pcm_off < this.pcm.length) {
-					var due = this.start_mono_us + this.audio_us;
-					var now = GLib.get_monotonic_time();
+				if (!more) {
+					this.feeding = false;
+					this.session = null;
+					this.cancel_tick();
+					return;
+				}
+				/* After a push, wait for its audio duration before the next. */
+				if (pushed > 0) {
+					due = this.start_mono_us + this.audio_us;
+					now = GLib.get_monotonic_time();
 					if (now < due) {
 						var delay_ms = (uint) int64.max(1, (due - now) / 1000);
 						this.schedule_tick(delay_ms);
 						return;
 					}
-					var cn = int.min(chunk, this.pcm.length - this.pcm_off);
-					this.push_slice(cn);
 				}
-				this.finish_feed(true);
-				return;
 			}
-
-			while (this.op_i < this.ops.length) {
-				var cn = this.ops[this.op_i];
-				if (cn == IBSO.Session.OP_RESET) {
-					this.op_i++;
-					this.transcriber.reset();
-					continue;
-				}
-				if (cn == IBSO.Session.OP_FLUSH) {
-					this.op_i++;
-					this.finish_feed(true);
-					return;
-				}
-				if (cn <= 0) {
-					this.op_i++;
-					continue;
-				}
-				if (this.pcm == null || this.pcm_off >= this.pcm.length) {
-					this.op_i++;
-					continue;
-				}
-				var due = this.start_mono_us + this.audio_us;
-				var now = GLib.get_monotonic_time();
-				if (now < due) {
-					var delay_ms = (uint) int64.max(1, (due - now) / 1000);
-					this.schedule_tick(delay_ms);
-					return;
-				}
-				cn = int.min(cn, this.pcm.length - this.pcm_off);
-				this.op_i++;
-				this.push_slice(cn);
-			}
-
-			/* Older captures: no OP_FLUSH in ''.chunks''. */
-			this.finish_feed(true);
-		}
-
-		private void push_slice(int cn)
-		{
-			var slice = new float[cn];
-			for (var i = 0; i < cn; i++) {
-				slice[i] = this.pcm[this.pcm_off + i];
-			}
-			this.pcm_off += cn;
-			this.audio_us += ((int64) cn * 1000000) / 16000;
-			this.transcriber.push((owned) slice);
-		}
-
-		/**
-		 * End ASR feed; optionally {@link IBSO.Capture.flush} (EOS path).
-		 * Speakers may still be draining — pipeline is left until EOS / stop.
-		 */
-		private void finish_feed(bool do_flush)
-		{
-			this.cancel_tick();
-			if (!this.feeding) {
-				return;
-			}
-			this.feeding = false;
-			this.ops = null;
-			this.pcm = null;
-			if (do_flush) {
-				this.transcriber.flush(this.pending);
-			}
-			this.pending = "";
 		}
 	}
 }

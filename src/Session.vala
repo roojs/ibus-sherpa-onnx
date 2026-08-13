@@ -23,22 +23,19 @@ namespace IBSO
 	 *
 	 * Live: {@link Capture} logs {@link Capture.push} / {@link Capture.reset} /
 	 * {@link Capture.flush} into this buffer, then {@link flush} on stop.
-	 * Replay / CLI: {@link Session.load} and play the same ops.
+	 * Replay / CLI: {@link Session.load}, then {@link feed} / {@link feed_next}
+	 * into Capture — same bytes and ops.
 	 *
 	 * == Example ==
 	 *
 	 * {{{
-	 * this.session.pcm.append_vals(samples, samples.length);
-	 * this.session.chunk_n.append_val(samples.length);
-	 * this.session.endpoint_off.append_val(this.session.accepted);
+	 * this.session.record_pcm(samples);
 	 * var sess = this.session;
 	 * this.session = new Session();
 	 * sess.flush();
 	 *
 	 * var recorded = new Session.load(stem + ".wav");
-	 * capture.reset();
-	 * capture.push(chunk);
-	 * capture.flush(recorded.pending);
+	 * recorded.feed(capture);
 	 * }}}
 	 */
 	public class Session : GLib.Object

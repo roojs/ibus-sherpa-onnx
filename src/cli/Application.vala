@@ -332,7 +332,6 @@ namespace IBSO.Cli
 			if (pcm.length > 0) {
 				run.pcm.append_vals(pcm, pcm.length);
 			}
-			var chunk_n = int.max(1, (int) (16000.0 * opt_chunk_ms / 1000.0));
 			if (sess.chunk_n.length > 0) {
 				var full = new int[sess.chunk_n.length];
 				GLib.Memory.copy((void*) full, sess.chunk_n.data,
@@ -359,8 +358,8 @@ namespace IBSO.Cli
 				}
 			}
 			var file_end = opt_from + pcm.length / 16000.0;
-			GLib.debug("#wav %s from=%.3f to=%.3f chunk_ms=%d live_chunks=%u f32=%u endpoints=%u fast=%s samples=%d language=%s model=%s",
-				opt_wav, opt_from, file_end, opt_chunk_ms,
+			GLib.debug("#wav %s from=%.3f to=%.3f live_chunks=%u f32=%u endpoints=%u fast=%s samples=%d language=%s model=%s",
+				opt_wav, opt_from, file_end,
 				run.chunk_n.length, run.pcm.length, run.endpoint_off.length,
 				opt_fast_transcribe.to_string(), pcm.length, language, model_dir);
 
@@ -392,74 +391,12 @@ namespace IBSO.Cli
 			});
 
 			if (opt_fast_transcribe) {
-				var off = 0;
-				var limit = pcm.length;
-				if (run.chunk_n.length > 0) {
-					limit = 0;
-					for (var i = 0; i < (int) run.chunk_n.length; i++) {
-						var cn = run.chunk_n.index(i);
-						if (cn > 0) {
-							limit += cn;
-						}
-					}
-					limit = int.min(limit, pcm.length);
-				}
-				if ((int) run.chunk_n.length == 0) {
-					transcriber.reset();
-					while (off < limit) {
-						var cn = int.min(chunk_n, limit - off);
-						var slice = new float[cn];
-						for (var i = 0; i < cn; i++) {
-							slice[i] = pcm[off + i];
-						}
-						transcriber.push((owned) slice);
-						off += cn;
-					}
-					transcriber.flush(run.pending);
-				} else {
-					for (var i = 0; i < (int) run.chunk_n.length; i++) {
-						var cn = run.chunk_n.index(i);
-						if (cn == IBSO.Session.OP_RESET) {
-							transcriber.reset();
-							continue;
-						}
-						if (cn == IBSO.Session.OP_FLUSH) {
-							transcriber.flush(run.pending);
-							continue;
-						}
-						if (cn <= 0 || off >= limit) {
-							continue;
-						}
-						cn = int.min(cn, limit - off);
-						var t0 = opt_from + off / 16000.0;
-						var t1 = opt_from + (off + cn) / 16000.0;
-						var sum = 0.0;
-						var slice = new float[cn];
-						for (var j = 0; j < cn; j++) {
-							slice[j] = pcm[off + j];
-							sum += (double) slice[j] * slice[j];
-						}
-						GLib.debug("#chunk t=%.3f-%.3f n=%d rms=%.4f", t0, t1, cn, Math.sqrt(sum / cn));
-						transcriber.push((owned) slice);
-						off += cn;
-					}
-					/* Older captures: no OP_FLUSH in ''.chunks''. */
-					var saw_flush = false;
-					for (var i = 0; i < (int) run.chunk_n.length; i++) {
-						if (run.chunk_n.index(i) == IBSO.Session.OP_FLUSH) {
-							saw_flush = true;
-							break;
-						}
-					}
-					if (!saw_flush) {
-						transcriber.flush(run.pending);
-					}
-				}
+				run.feed(transcriber);
 				loop.run();
 				return 0;
 			}
 
-			/* Default: same Browse Replay path (speakers + Capture op-log feed). */
+			/* Default: same Browse Replay (speakers + Session.feed_next). */
 			var path = opt_wav;
 			string? tmp = null;
 			if (opt_from > 0.0 || opt_to >= 0.0) {

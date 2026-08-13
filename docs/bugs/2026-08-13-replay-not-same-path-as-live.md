@@ -1,78 +1,56 @@
 # Replay ASR path is not the same as live
 
-**Status:** ⏳ wired — await fresh listen + Replay user ✅  
+**Status:** ⏳ Session.feed wired — await fresh listen (post `num_threads=1` install) + Replay user ✅  
 **Reported:** 2026-08-13  
-**Package:** `ibus-sherpa-onnx` (Transcriber / Debug.Replay / CLI `--wav`)  
+**Package:** `ibus-sherpa-onnx` (Capture / Session / Debug.Replay / CLI `--wav`)  
 **Related plan:** `docs/plans/0.8-debug-recordings-replay.md` Phase C (purpose unmet)  
-**Evidence:** `~/.cache/ibus-sherpa-onnx/debug/2026-08-13/001447.*` (live `.txt` ≠ fast Replay); `001737.*` matched on one CLI run but is not proof of one path
+**Evidence:** `091746` Browse ~85% (extra mid-endpoint + grafted `.pending`); `091821` Browse 100% / CLI op-feed ~71% (mid-endpoints); `091956` 100%
 
 > Emoji legend: RooTerm `docs/guide-to-writing-plans.md`.  
 > Process: RooTerm `docs/bug-fix-process.md`.
 
+## Design (non-negotiable)
+
+- 🔷 **Session** is the whole listen: live `Capture` logs ops into it; `Session.flush` writes sidecars; `Session.load` reads them back.
+- 🔷 **Replay** = `Session.feed` / `feed_next` into `Capture` — same bytes, same op order (`0` reset / `n` push / `-1` flush). Speakers may play `.wav` in parallel; they must not redefine ASR chunking.
+- 🔷 CLI `--fast-transcribe` and Browse Replay share that feed. No second ASR policy.
+
 ## Problem (observed)
 
-- 🔷 **Requirement (stated repeatedly):** live listen and Replay must use the **same** accept → decode → endpoint → stop path. Only the PCM **source** may differ (mic vs saved floats).
-- 🔷 **Actual:** Replay is a **second** path (`file_active`, forced `.endpoints` cuts, special `for_flush` / pending commit, separate Browse Transcriber). Live Output / `.txt` and Replay Output diverge.
-- 🔷 Concrete (001447): live `.txt` starts `That would have interest` / `Of interest`; `--fast-transcribe` Replay starts `Out of interest` / `Um, out of interest` (and further line drift).
-- 🔷 User has been correcting “same path” for days; agents kept adding sidecars / forks and claiming progress. Plan Phase C was marked ✔️ without user ✅.
+- 🔷 Live listen and Replay must share accept → decode → endpoint → flush. Only the PCM **source** may differ.
+- 🔷 85%/71% matches mean extra `is_endpoint` cuts on replay, then `flush(.pending)` re-emits live’s stop text → duplicated lines (not “close enough”).
+- 💩 Some fixtures were recorded **before** engine install that set `num_threads=1` (was `1..4`). Re-ASR with 1 thread can cut differently than multi-thread live. Acceptance needs a **new** listen on the current binary.
 
 ## Expected vs actual
 
-| | Expected | Actual |
+| | Expected | Actual (when wrong) |
 |---|---|---|
-| Cut policy | Same as live (`is_endpoint`) | File mode cuts only at saved `.endpoints`; ignores `is_endpoint` |
-| Stop / tail | Same as live stop + pending | `for_flush` commits `.pending` or hypothesis; not `stop` / `session_end` |
-| Worker gate | One “accepting” mode | `listening` **or** `file_active` branches throughout Idle / accept |
-| Session on file run | Empty capture session (or none); Feed owns loaded PCM | `begin_file` **replaces** `transcriber.session` with loaded Session (endpoints/pending/pcm) |
-| Outcome | Replay Output == live `.txt` for a faithful capture | Not guaranteed; paths differ by design today |
-
-## Evidence (code — confirmed)
-
-- ✔️ `Transcriber.processing_loop`: file cut fork
-
-```vala
-if (this.file_active && this.session.endpoint_off.length > 0) {
-    /* forced cuts */
-} else if (this.recognizer.is_endpoint(this.stream) != 1) {
-    return;
-}
-```
-
-- ✔️ Live: `start` / `stop(pending)` → mic + `session_end` → `Session.flush` (save). Replay: `begin_file` / `for_flush` → `file_finished` (no shared stop).
-- ✔️ `Debug.Replay` + Dialog `ensure_transcriber`: **new** Transcriber in setup process, not the IBus engine instance that recorded (process boundary — OK for offline, but must still call the **same** worker logic).
-- ✔️ Extra live-only gap: `start()` sets `listening` before worker `reset` sets `recording`; mic chunks can be **accepted without being written** to `.f32`/`.chunks` until reset runs.
-
-## Root cause
-
-- ✔️ **Not** “one more missing sidecar.” The defect is **architectural forking**: Replay was built as a parallel file-feed policy instead of “push the same PCM into the same listen pipeline.”
-- 💩 ONNX non-determinism may still exist even on one path; that is secondary until the path fork is removed.
-- 💩 Saving `.endpoints` / `.pending` for diagnostics is fine; **using them to drive a different cut/stop policy is not** (violates the stated requirement).
+| Ops | `Session.feed` → Capture only | Older Browse used wav tee + Feed |
+| Cuts | Same `is_endpoint` as live | Extra mid-endpoints on some replays |
+| Stop | `flush(pending)` as live stop | Same call, but after divergent cuts → grafted full pending |
+| Outcome | Replay Output == live `.txt` | 85–100% RapidFuzz; not guaranteed |
 
 ## Proposed fix
 
-### Shape (settled 2026-08-13)
+### Shape (settled)
 
-- ✔️ **`Capture : Transcriber`** with construct `save`: record sidecars when true; ASR-only when false. Callers construct Capture only; Transcriber queue/mic ops are protected.
-- ✔️ Live and Replay both call `Capture.reset` / `push` / `flush`; cuts always `is_endpoint`.
-- ✔️ Engine live: `Capture(save: debug-recordings)`. Browse Replay / CLI: `Capture(save: false)`.
+- ✔️ `Capture : Transcriber` (`save` on/off). Live + Replay call `reset` / `push` / `flush`.
+- ✔️ `Session.feed` / `feed_next` — single op-log walker. Browse Replay paces `feed_next`; CLI `--fast-transcribe` calls `feed`.
+- 🔷 **Acceptance:** new listen on current engine → Replay Output matches `.txt`; user ✅.
 
 ### Must still hold
 
-- ✔️ **One PCM path in `processing_loop`:** always `is_endpoint` (forced `.endpoints` fork removed).
-- ✔️ Browse Replay walks ''.chunks'' ops into Capture (not wav appsink / Feed reassembly). Speakers play ''.wav'' in parallel, paced to 16 kHz.
-- 🔷 **Acceptance:** new listen → Replay Output matches `.txt` word-for-word; user ✅. Phase C stays open until then.
-- 🚫 Do not “fix” by emitting saved `.txt` lines while pretending to ASR.
-- 🚫 Do not add FilePlan / more cut helpers.
+- 🚫 Do not fake Output from saved `.txt`.
+- 🚫 Do not drive cuts from `.endpoints`.
+- 🚫 Do not keep a second CLI op loop beside `Session.feed`.
 
 ## Attempts / changelog
 
-- ✔️ Sidecars `.f32` / `.chunks` / `.endpoints` / `.pending`; `Session.load` / `begin_file` refactor — improved capture, **kept** the dual path.
-- ✔️ Forced endpoints + pending flush made some fixtures match (e.g. older 233428, 001737 once) while **violating** “same path”; 001447 still diverges.
-- ✔️ Agents repeatedly promised “one more fix”; no `docs/bugs/` ticket until 2026-08-13.
-- ✔️ 2026-08-13: `Capture : Transcriber`; Engine/GTK/CLI/Dialog construct Capture; no forced endpoints.
-- ✔️ 2026-08-13: Browse Replay still fed ASR from wav tee + Feed (positive chunk sizes only) — **not** the Capture op log. Fixed: Replay walks `0` / `n` / `-1` into `reset` / `push` / `flush`; wav is speakers-only.
+- ✔️ Forced `.endpoints` / dual `file_active` path — rejected.
+- ✔️ Capture + sidecars; Browse still used Feed/wav for ASR — fixed to op log.
+- ✔️ 2026-08-13: `Session.feed` / `feed_next`; CLI fast + Replay both use it.
 
 ## Next
 
-- ⏳ Fresh listen + Replay; Output must match `.txt`; user ✅.
+- ⏳ Reinstall setup/engine if needed; **new** listen; Replay; user ✅.
 - ⏳ Plan `0.8` Phase C stays open until user ✅.
