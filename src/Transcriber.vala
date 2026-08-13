@@ -205,6 +205,7 @@ namespace IBSO
 			}
 
 			if (chunk.reset) {
+				this.note_feed('R', null);
 				this.recognizer.reset(this.stream);
 				if (this.stream_language != "") {
 					this.stream.set_option("language", this.stream_language);
@@ -226,6 +227,7 @@ namespace IBSO
 			}
 
 			if (chunk.flush) {
+				this.note_feed('F', null);
 				/* Match listen stop(): commit stop partial when set, else
 				 * current hypothesis — never input_finished() (changes the line). */
 				var commit = chunk.flush_pending != "" ? chunk.flush_pending : this.hypothesis;
@@ -255,6 +257,7 @@ namespace IBSO
 			if (!this.listening && chunk.samples.length > 0) {
 				this.feed_pos_s += chunk.samples.length / 16000.0;
 			}
+			this.note_feed('P', chunk.samples);
 			this.stream.accept_waveform(16000, chunk.samples);
 			while (this.recognizer.is_ready(this.stream) == 1) {
 				this.recognizer.decode(this.stream);
@@ -352,6 +355,17 @@ namespace IBSO
 			}
 			buffer.unmap(map);
 			return Gst.FlowReturn.OK;
+		}
+
+		/**
+		 * ASR worker hook before accept/reset/flush (''.feedlog'').
+		 * ''op'': ''R'' reset, ''P'' PCM (samples set), ''F'' flush.
+		 *
+		 * @param op feed marker
+		 * @param samples PCM for ''P'', else null
+		 */
+		protected virtual void note_feed(char op, float[]? samples)
+		{
 		}
 
 		/**

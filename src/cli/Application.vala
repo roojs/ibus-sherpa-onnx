@@ -337,12 +337,20 @@ namespace IBSO.Cli
 				var full = new int[sess.chunk_n.length];
 				GLib.Memory.copy((void*) full, sess.chunk_n.data,
 					sess.chunk_n.length * sizeof(int));
-				var feed_chunks = (i0 > 0 || i1 < n_all)
+				var sliced = (i0 > 0 || i1 < n_all);
+				var feed_chunks = sliced
 					? IBSO.Debug.Recording.slice_chunks(full, i0, i1)
 					: full;
 				for (var i = 0; i < feed_chunks.length; i++) {
 					var cn = feed_chunks[i];
 					run.chunk_n.append_val(cn);
+				}
+				/* Full-session chunk_t only — slice_chunks drops reset/flush. */
+				if (!sliced && sess.chunk_t.length == sess.chunk_n.length) {
+					for (var i = 0; i < (int) sess.chunk_t.length; i++) {
+						var t = sess.chunk_t.index(i);
+						run.chunk_t.append_val(t);
+					}
 				}
 			}
 			if (sess.endpoint_off.length > 0) {
@@ -394,6 +402,13 @@ namespace IBSO.Cli
 			if (opt_fast_transcribe) {
 				run.feed(transcriber);
 				loop.run();
+				var stem = opt_wav.slice(0, opt_wav.length - 4);
+				try {
+					GLib.FileUtils.set_contents(stem + ".feedlog.replay",
+						transcriber.feed_log);
+				} catch (GLib.Error err) {
+					GLib.warning("feedlog.replay: %s", err.message);
+				}
 				return 0;
 			}
 

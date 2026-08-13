@@ -21,6 +21,7 @@ namespace IBSO.Debug
 	/**
 	 * Browse / CLI Replay: speakers play the ''.wav''; {@link IBSO.Session.feed_next}
 	 * walks the Capture op log into ASR — same bytes and ops as live.
+	 * When ''.chunks'' carries injection µs, feed is paced to those offsets.
 	 *
 	 * == Example ==
 	 *
@@ -38,15 +39,17 @@ namespace IBSO.Debug
 		private Gst.Pipeline? pipeline = null;
 		private ulong bus_id = 0;
 		private IBSO.Session? session = null;
+		private string wav_path = "";
 		private int op_i = 0;
 		private int pcm_off = 0;
 		/** True while this Replay is feeding ASR. */
 		private bool feeding = false;
 		/** Wall-clock pacing: monotonic µs when feed started. */
 		private int64 start_mono_us = 0;
-		/** Audio time already pushed (µs at 16 kHz). */
+		/** Fallback when chunks lack µs: audio already pushed at 16 kHz. */
 		private int64 audio_us = 0;
 		private uint timeout_id = 0;
+		private ulong flushed_id = 0;
 
 		public Replay(IBSO.Capture transcriber)
 		{
@@ -67,8 +70,19 @@ namespace IBSO.Debug
 			this.op_i = 0;
 			this.pcm_off = 0;
 			this.audio_us = 0;
-			GLib.debug("#replay path=%s ops=%u f32=%u pending=%s", path,
+			this.wav_path = path;
+			this.flushed_id = this.transcriber.flushed.connect(() => {
+				var stem = this.wav_path.slice(0, this.wav_path.length - 4);
+				try {
+					GLib.FileUtils.set_contents(stem + ".feedlog.replay",
+						this.transcriber.feed_log);
+				} catch (GLib.Error err) {
+					GLib.warning("feedlog.replay: %s", err.message);
+				}
+			});
+			GLib.debug("#replay path=%s ops=%u f32=%u times=%u pending=%s", path,
 				this.session.chunk_n.length, this.session.pcm.length,
+				this.session.chunk_t.length,
 				this.session.pending != "" ? "yes" : "no");
 			this.feeding = true;
 			this.start_mono_us = GLib.get_monotonic_time();
@@ -112,7 +126,12 @@ namespace IBSO.Debug
 		{
 			this.cancel_tick();
 			this.drop_pipeline();
+			if (this.flushed_id != 0) {
+				this.transcriber.disconnect(this.flushed_id);
+				this.flushed_id = 0;
+			}
 			this.session = null;
+			this.wav_path = "";
 			this.op_i = 0;
 			this.pcm_off = 0;
 			this.audio_us = 0;
@@ -157,8 +176,8 @@ namespace IBSO.Debug
 		}
 
 		/**
-		 * Pace {@link IBSO.Session.feed_next} to 16 kHz wall time so Output
-		 * tracks the speakers. Reset / flush run immediately.
+		 * Pace {@link IBSO.Session.feed_next} from stamped ''.chunks'' µs when
+		 * present, else 16 kHz sample duration (older captures).
 		 */
 		private void tick()
 		{
@@ -166,20 +185,31 @@ namespace IBSO.Debug
 				return;
 			}
 
+			var use_times = this.session.chunk_t.length > 0
+				&& this.session.chunk_t.length == this.session.chunk_n.length;
+
 			while (this.feeding && this.session != null) {
-				var due = this.start_mono_us + this.audio_us;
-				var now = GLib.get_monotonic_time();
-				if (this.audio_us > 0 && now < due) {
-					var delay_ms = (uint) int64.max(1, (due - now) / 1000);
-					this.schedule_tick(delay_ms);
-					return;
+				int64 due_off = -1;
+				if (use_times && this.op_i < (int) this.session.chunk_t.length) {
+					due_off = this.session.chunk_t.index(this.op_i);
+				} else if (!use_times && this.audio_us > 0) {
+					due_off = this.audio_us;
+				}
+				if (due_off >= 0) {
+					var due = this.start_mono_us + due_off;
+					var now = GLib.get_monotonic_time();
+					if (now < due) {
+						var delay_ms = (uint) int64.max(1, (due - now) / 1000);
+						this.schedule_tick(delay_ms);
+						return;
+					}
 				}
 
 				var before_off = this.pcm_off;
 				var more = this.session.feed_next(this.transcriber, ref this.op_i,
 					ref this.pcm_off);
 				var pushed = this.pcm_off - before_off;
-				if (pushed > 0) {
+				if (!use_times && pushed > 0) {
 					this.audio_us += ((int64) pushed * 1000000) / 16000;
 				}
 				if (!more) {
@@ -188,10 +218,9 @@ namespace IBSO.Debug
 					this.cancel_tick();
 					return;
 				}
-				/* After a push, wait for its audio duration before the next. */
-				if (pushed > 0) {
-					due = this.start_mono_us + this.audio_us;
-					now = GLib.get_monotonic_time();
+				if (!use_times && pushed > 0) {
+					var due = this.start_mono_us + this.audio_us;
+					var now = GLib.get_monotonic_time();
 					if (now < due) {
 						var delay_ms = (uint) int64.max(1, (due - now) / 1000);
 						this.schedule_tick(delay_ms);

@@ -48,15 +48,28 @@ namespace IBSO
 		/**
 		 * Sample counts / control ops per live ingress (''.chunks'').
 		 * Positive = {@link Capture.push} size; {@link OP_RESET} / {@link OP_FLUSH}
-		 * mark {@link Capture.reset} / {@link Capture.flush}.
+		 * mark {@link Capture.reset} / {@link Capture.flush}. On disk, stamped
+		 * listens prefix {@link OP_STAMPED} then (op, µs) int32 pairs.
 		 */
 		public GLib.Array<int> chunk_n = new GLib.Array<int>(false, false, (uint) sizeof(int));
+
+		/**
+		 * Injection offset µs per op in {@link chunk_n}, from the first recorded
+		 * op. Stored in ''.chunks'' with each op; Replay paces from these.
+		 */
+		public GLib.Array<int64> chunk_t = new GLib.Array<int64>(false, false, (uint) sizeof(int64));
+
+		/** Monotonic µs at first recorded op (0 = not started). */
+		private int64 pump_t0 = 0;
 
 		/** ''.chunks'' sentinel: {@link Capture.reset}. */
 		public const int OP_RESET = 0;
 
 		/** ''.chunks'' sentinel: {@link Capture.flush} (see {@link pending}). */
 		public const int OP_FLUSH = -1;
+
+		/** ''.chunks'' header: following words are (op, µs) pairs. */
+		public const int OP_STAMPED = -2;
 
 		/**
 		 * Sample positions where live endpoint reset (''.endpoints'').
@@ -79,10 +92,20 @@ namespace IBSO
 		public string pending { get; set; default = ""; }
 
 		/**
-		 * Checksums of Capture reset / push / flush (''.feedlog''), filled while
-		 * {@link recording}.
+		 * Checksums of recognizer accept / reset / flush (''.feedlog''), filled
+		 * from the ASR worker via Idle on stop.
 		 */
 		public string feedlog_body { get; set; default = ""; }
+
+		/** Append µs-since-first-op for the op just logged in {@link chunk_n}. */
+		private void stamp_op()
+		{
+			if (this.pump_t0 == 0) {
+				this.pump_t0 = GLib.get_monotonic_time();
+			}
+			var t = GLib.get_monotonic_time() - this.pump_t0;
+			this.chunk_t.append_val(t);
+		}
 
 		/**
 		 * Log a {@link Capture.push} of ''n'' samples (no-op if not {@link recording}).
@@ -95,6 +118,7 @@ namespace IBSO
 				return;
 			}
 			this.chunk_n.append_val(n);
+			this.stamp_op();
 			this.accepted += n;
 		}
 
@@ -121,6 +145,7 @@ namespace IBSO
 			}
 			var op = OP_RESET;
 			this.chunk_n.append_val(op);
+			this.stamp_op();
 		}
 
 		/**
@@ -136,6 +161,7 @@ namespace IBSO
 			this.pending = pending;
 			var op = OP_FLUSH;
 			this.chunk_n.append_val(op);
+			this.stamp_op();
 		}
 
 		/**
@@ -159,7 +185,7 @@ namespace IBSO
 		 * Walk this session’s op log into ''capture'' in order: {@link OP_RESET} →
 		 * {@link Capture.reset}, positive → {@link Capture.push} from {@link pcm},
 		 * {@link OP_FLUSH} → {@link Capture.flush}({@link pending}). No pacing —
-		 * callers that need realtime (Browse speakers) pace around
+		 * callers that need live injection timing use {@link chunk_t} around
 		 * {@link feed_next}.
 		 *
 		 * @param capture ASR target (usually ''save: false'')
@@ -276,11 +302,20 @@ namespace IBSO
 					}
 				} else {
 					var n = data.length / (int) sizeof(int);
-					var chunk_ns = new int[n];
-					GLib.Memory.copy((void*) chunk_ns, data, data.length);
-					for (var i = 0; i < n; i++) {
-						var cn = chunk_ns[i];
-						this.chunk_n.append_val(cn);
+					var words = new int[n];
+					GLib.Memory.copy((void*) words, data, data.length);
+					if (n >= 3 && words[0] == OP_STAMPED && (n - 1) % 2 == 0) {
+						for (var i = 1; i + 1 < n; i += 2) {
+							var cn = words[i];
+							var t = (int64) words[i + 1];
+							this.chunk_n.append_val(cn);
+							this.chunk_t.append_val(t);
+						}
+					} else {
+						for (var i = 0; i < n; i++) {
+							var cn = words[i];
+							this.chunk_n.append_val(cn);
+						}
 					}
 				}
 			} catch (GLib.Error err) {
@@ -343,13 +378,22 @@ namespace IBSO
 				return;
 			}
 			var samples = this.pcm.steal();
-			/* Copy by Array.length — steal() has returned a byte-ish length for int[]
-			 * (trailing zeros / garbage ints in ''.chunks''). */
 			var n_chunks = (int) this.chunk_n.length;
-			var chunk_ns = new int[n_chunks];
-			if (n_chunks > 0) {
-				GLib.Memory.copy((void*) chunk_ns, this.chunk_n.data,
-					n_chunks * sizeof(int));
+			int[] chunk_ns;
+			if (n_chunks > 0 && (int) this.chunk_t.length == n_chunks) {
+				/* ''.chunks'': OP_STAMPED, then (op, µs) pairs. */
+				chunk_ns = new int[1 + n_chunks * 2];
+				chunk_ns[0] = OP_STAMPED;
+				for (var i = 0; i < n_chunks; i++) {
+					chunk_ns[1 + 2 * i] = this.chunk_n.index(i);
+					chunk_ns[2 + 2 * i] = (int) this.chunk_t.index(i);
+				}
+			} else {
+				chunk_ns = new int[n_chunks];
+				if (n_chunks > 0) {
+					GLib.Memory.copy((void*) chunk_ns, this.chunk_n.data,
+						n_chunks * sizeof(int));
+				}
 			}
 			var n_ends = (int) this.endpoint_off.length;
 			var endpoint_offs = new int[n_ends];

@@ -24,11 +24,11 @@ namespace IBSO.Debug
 	 *
 	 * Basename ''HHMMSS'' from listen start. ''.wav'' is mono 16 kHz S16LE for
 	 * speakers; ''.f32'' is the live float ''accept_waveform'' PCM (Replay ASR);
-		 * ''.chunks'' is LE int32 sample counts per accept; ''.endpoints'' is LE
-		 * int32 sample positions where live reset after ''is_endpoint''; ''.pending''
-		 * is the listen-stop partial (if any); ''.feedlog'' checksums each chunk
-		 * the recognizer received; ''.txt'' is UTF-8.
-		 */
+	 * ''.chunks'' is LE int32 ops (optionally {@link IBSO.Session.OP_STAMPED}
+	 * + (op, µs) pairs); ''.endpoints'' is LE int32 sample positions where live
+	 * reset after ''is_endpoint''; ''.pending'' is the listen-stop partial;
+	 * ''.feedlog'' checksums each chunk accepted by the recognizer; ''.txt'' is UTF-8.
+	 */
 	public class Recording : GLib.Object
 	{
 		/**
@@ -36,7 +36,7 @@ namespace IBSO.Debug
 		 *
 		 * @param text committed transcripts for the listen (may be empty)
 		 * @param samples float mono PCM at 16 kHz (same as accept_waveform)
-		 * @param chunk_ns sample count per accept_waveform during the listen
+		 * @param chunk_ns ''.chunks'' wire words (plain ops or stamped pairs)
 		 * @param endpoint_offs sample positions of live endpoint resets
 		 * @param started wall time at listen start (basename); null → now
 		 * @param stop_pending listen-stop partial (written to ''.pending'')
