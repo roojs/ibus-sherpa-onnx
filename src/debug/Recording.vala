@@ -27,7 +27,8 @@ namespace IBSO.Debug
 	 * ''.chunks'' is LE int32 ops (optionally {@link IBSO.Session.OP_STAMPED}
 	 * + (op, µs) pairs); ''.endpoints'' is LE int32 sample positions where live
 	 * reset after ''is_endpoint''; ''.pending'' is the listen-stop partial;
-	 * ''.feedlog'' checksums each chunk accepted by the recognizer; ''.txt'' is UTF-8.
+	 * ''.feedlog'' is recognizer accept lines (''R''/''P''/''E''/''F''; ''E'' =
+	 * endpoint cut sample off — also in ''.feedlog.replay''); ''.txt'' is UTF-8.
 	 */
 	public class Recording : GLib.Object
 	{

@@ -292,6 +292,8 @@ namespace IBSO
 			}
 
 			var commit = this.hypothesis;
+			/* Same feedlog stream as R/P/F — cut sample off for live vs Replay diff. */
+			this.note_feed('E', null);
 			var wall_s = (GLib.get_monotonic_time() - this.segment_start_us) / 1000000.0;
 			var partials = this.partial_updates;
 			GLib.Idle.add(() => {
@@ -358,8 +360,8 @@ namespace IBSO
 		}
 
 		/**
-		 * ASR worker hook before accept/reset/flush (''.feedlog'').
-		 * ''op'': ''R'' reset, ''P'' PCM (samples set), ''F'' flush.
+		 * ASR worker hook before accept/reset/flush/endpoint (''.feedlog'').
+		 * ''op'': ''R'' reset, ''P'' PCM (samples set), ''E'' endpoint cut, ''F'' flush.
 		 *
 		 * @param op feed marker
 		 * @param samples PCM for ''P'', else null

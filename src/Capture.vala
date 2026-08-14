@@ -28,7 +28,8 @@ namespace IBSO
 	 * Session methods no-op and only ASR runs.
 	 *
 	 * ''.feedlog'' lines are checksummed on the ASR worker via {@link note_feed},
-	 * then appended on Idle.
+	 * then appended on Idle. Ops: ''R'' / ''P'' / ''E'' (endpoint cut at
+	 * sample off) / ''F''. Replay writes the same shape to ''.feedlog.replay''.
 	 *
 	 * == Example ==
 	 *
@@ -174,7 +175,7 @@ namespace IBSO
 		/**
 		 * Worker: checksum / marker, Idle-append to {@link feed_log}.
 		 *
-		 * @param op ''R'' / ''P'' / ''F''
+		 * @param op ''R'' / ''P'' / ''E'' / ''F''
 		 * @param samples PCM for ''P''
 		 */
 		protected override void note_feed(char op, float[]? samples)
