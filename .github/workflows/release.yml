@@ -135,7 +135,7 @@ jobs:
             gtk4-devel libadwaita-devel \
             libsoup3-devel json-glib-devel libarchive-devel \
             libicu-devel libgee-devel \
-            at-spi2-core-devel rapidfuzz-devel
+            at-spi2-core-devel rapidfuzz-cpp-devel
 
       - name: Install libsherpa-onnx from roojs/sherpa-onnx release
         env:

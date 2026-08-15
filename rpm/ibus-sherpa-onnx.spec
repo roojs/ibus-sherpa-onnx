@@ -29,7 +29,7 @@ BuildRequires:  libarchive-devel
 BuildRequires:  libicu-devel
 BuildRequires:  libgee-devel
 BuildRequires:  at-spi2-core-devel
-BuildRequires:  rapidfuzz-devel
+BuildRequires:  rapidfuzz-cpp-devel
 BuildRequires:  libsherpa-onnx-c-api-devel
 BuildRequires:  chrpath
 
