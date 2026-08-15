@@ -1,6 +1,13 @@
 # ibus-sherpa-onnx
 
-Talk into your microphone; text appears in the app you are using. Works offline on Linux (IBus + sherpa-onnx / Nemotron). **Multilingual:** English plus many other languages (Spanish, French, German, Japanese, Chinese, and more) via preferences.
+Speech-to-text for the Linux desktop: talk into your microphone and text
+appears in the app you are using (IBus + sherpa-onnx / Nemotron, fully
+offline). In recent testing we are seeing **near–100% dictation** —
+essentially word-perfect on clean speech — after switching utterance
+splits to our own audio-stream quiet detector.
+
+**Multilingual:** English plus many other languages (Spanish, French, German,
+Japanese, Chinese, and more) via preferences.
 
 **Distro note:** These packages target **Ubuntu 25.04** (and similar). Older Ubuntu (e.g. 24.04) does not have the ONNX packages in the archive.
 
@@ -63,7 +70,7 @@ Wait until that finishes with no errors before continuing.
 1. Open:  
    https://github.com/roojs/ibus-sherpa-onnx/releases/latest
 2. Under **Assets**, download **exactly** this file:  
-   `ibus-sherpa-onnx_0.3.2-1_amd64.deb`
+   `ibus-sherpa-onnx_0.3.3-1_amd64.deb`
 3. Save it in the **same Downloads** folder.
 
 You should now have **two** `.deb` files in Downloads.
@@ -75,7 +82,7 @@ In the terminal:
 ```bash
 cd ~/Downloads
 sudo dpkg -i libsherpa-onnx-c-api1_1.13.4-roojs3_amd64.deb
-sudo dpkg -i ibus-sherpa-onnx_0.3.2-1_amd64.deb
+sudo dpkg -i ibus-sherpa-onnx_0.3.3-1_amd64.deb
 ```
 
 Both commands should finish without “dependency problems”.  
@@ -135,7 +142,7 @@ sudo dnf install \
 
 1. Open: https://github.com/roojs/ibus-sherpa-onnx/releases/latest  
 2. Download **exactly** this file:  
-   `ibus-sherpa-onnx-0.3.2-1.fc44.x86_64.rpm`  
+   `ibus-sherpa-onnx-0.3.3-1.fc44.x86_64.rpm`  
 3. Save in **Downloads**.
 
 ### Step 4 — Install both (library first)
@@ -143,7 +150,7 @@ sudo dnf install \
 ```bash
 cd ~/Downloads
 sudo dnf install ./libsherpa-onnx-c-api-1.13.4-roojs3.fc44.x86_64.rpm
-sudo dnf install ./ibus-sherpa-onnx-0.3.2-1.fc44.x86_64.rpm
+sudo dnf install ./ibus-sherpa-onnx-0.3.3-1.fc44.x86_64.rpm
 ```
 
 ### Step 5 — Choose a speech model

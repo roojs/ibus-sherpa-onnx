@@ -351,10 +351,12 @@ namespace IBSO
 			try {
 				GLib.debug("Loading model pack %s (%s): %s", pack, this.language, model_dir);
 				var save = false;
+#if IBSO_DEBUG_RECORDINGS
 				try {
 					save = Engine.config.key_file.get_boolean("general", "debug-recordings");
 				} catch (GLib.Error err) {
 				}
+#endif
 				var t = new Capture(this, Engine.config, save) {
 					model_dir = model_dir,
 					pack = pack

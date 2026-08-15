@@ -178,7 +178,9 @@ namespace IBSO.Cli
 				language = language
 			};
 			var config = IBSO.Config.load();
-			var save = opt_wav == "";
+			var save = false;
+#if IBSO_DEBUG_RECORDINGS
+			save = opt_wav == "";
 			if (save) {
 				try {
 					save = config.key_file.get_boolean("general", "debug-recordings");
@@ -186,6 +188,7 @@ namespace IBSO.Cli
 					save = false;
 				}
 			}
+#endif
 			IBSO.Capture transcriber;
 			try {
 				transcriber = new IBSO.Capture(engine, config, save) {
@@ -198,7 +201,12 @@ namespace IBSO.Cli
 			}
 
 			if (opt_wav != "") {
+#if IBSO_DEBUG_RECORDINGS
 				return this.run_wav(command_line, transcriber, language, model_dir);
+#else
+				GLib.critical("--wav needs a build with -Ddebug_recordings=true");
+				return 1;
+#endif
 			}
 			if (opt_script != "") {
 				return this.run_script(command_line, transcriber, language, model_dir);
@@ -213,6 +221,10 @@ namespace IBSO.Cli
 			string model_dir
 		)
 		{
+#if !IBSO_DEBUG_RECORDINGS
+			GLib.critical("--wav needs a build with -Ddebug_recordings=true");
+			return 1;
+#else
 			if (opt_from < 0.0) {
 				GLib.critical("--from must be >= 0");
 				return 1;
@@ -433,6 +445,7 @@ namespace IBSO.Cli
 				GLib.FileUtils.unlink(tmp);
 			}
 			return 0;
+#endif
 		}
 
 		private int run_script(

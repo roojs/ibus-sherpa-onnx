@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.3 - 2026-08-15
+
+- Utterance splits use our own PCM quiet detector (`pcm_quiet_endpoint`:
+  ~1.2 s below a peak floor) instead of sherpa-onnx `is_endpoint` (model
+  blank runs). Decode still produces the words; line breaks follow the
+  audio. We believe this yields effectively perfect dictation transcription
+  versus the previous blank-based chopper, which could miss or mis-cut
+  words.
+- Debug listen recordings + Preferences Debug / Browse are compile-time
+  optional (`-Ddebug_recordings=true`); off by default so normal packages
+  do not ship or enable that path.
+
 ## 0.3.2 - 2026-08-10
 
 - Preferences Language combo: searchable substring filter (`expression` +

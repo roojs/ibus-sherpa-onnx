@@ -79,7 +79,7 @@ ninja -C build
 Default build is the IBus engine + Preferences only. Optional sideline demos:
 
 ```bash
-meson setup build -Dcli=true -Dgtk_demo=true   # or meson configure build -Dcli=true ...
+meson setup build -Dcli=true -Dgtk_demo=true -Ddebug_recordings=true
 ninja -C build
 ```
 
@@ -91,6 +91,9 @@ Binaries under `build/`:
 | `ibus-setup-sherpa-onnx` | yes | yes | Preferences / model download |
 | `sherpa-onnx-mic` | `-Dcli=true` | no | CLI mic → stdout smoke test |
 | `sherpa-onnx-gtk` | `-Dgtk_demo=true` | no | GTK composer demo |
+
+Debug listen recordings + Preferences **Debug** tab / Browse are **off** unless
+`-Ddebug_recordings=true` (sources under `src/debug/` are not compiled otherwise).
 
 Install into `/usr` (optional; for day-to-day prefer the `.deb`):
 

@@ -1,6 +1,6 @@
 # First word after pause dropped
 
-**Status:** ⏳ open — **diagnose before splice**  
+**Status:** ✅ done in 0.3.3 — PCM quiet endpoint; user reports near–100% dictation (no fresh “first word after pause” misses)  
 **Reported:** 2026-08-11  
 **Package:** `ibus-sherpa-onnx` (engine / Transcriber)  
 **Evidence:** `~/.cache/ibus-sherpa-onnx/debug/2026-08-11/213338.{wav,txt,out.txt}`

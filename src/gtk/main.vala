@@ -36,10 +36,12 @@ int main(string[] args)
 		try {
 			var config = IBSO.Config.load();
 			var save = false;
+#if IBSO_DEBUG_RECORDINGS
 			try {
 				save = config.key_file.get_boolean("general", "debug-recordings");
 			} catch (GLib.Error err) {
 			}
+#endif
 			transcriber = new IBSO.Capture(engine, config, save) {
 				model_dir = model_dir
 			};

@@ -362,11 +362,14 @@ namespace IBSO
 
 		/**
 		 * Merge {@link pending} into {@link text} and persist via
-		 * {@link IBSO.Debug.Recording.save} on Idle (no-op if empty).
+		 * {@link IBSO.Debug.Recording.save} on Idle when debug recordings
+		 * are compiled in (no-op persist otherwise).
 		 */
 		public void flush()
 		{
+#if IBSO_DEBUG_RECORDINGS
 			var stop_pending = this.pending;
+#endif
 			if (this.pending != "") {
 				if (this.text != "") {
 					this.text += "\n";
@@ -377,6 +380,7 @@ namespace IBSO
 			if (!this.recording && this.text == "" && this.pcm.length == 0) {
 				return;
 			}
+#if IBSO_DEBUG_RECORDINGS
 			var samples = this.pcm.steal();
 			var n_chunks = (int) this.chunk_n.length;
 			int[] chunk_ns;
@@ -412,6 +416,7 @@ namespace IBSO
 					stop_pending, feedlog);
 				return GLib.Source.REMOVE;
 			});
+#endif
 		}
 	}
 }

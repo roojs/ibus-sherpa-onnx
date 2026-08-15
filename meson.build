@@ -1,7 +1,7 @@
 project(
   'ibus-sherpa-onnx',
   ['c', 'cpp', 'vala'],
-  version: '0.3.2',
+  version: '0.3.3',
   meson_version: '>= 1.0.0',
   default_options: [
     'warning_level=1',
@@ -35,6 +35,26 @@ add_project_arguments(
   language: 'vala',
 )
 
+# Debug recordings / Browse (off by default — not in normal packages).
+debug_recordings = get_option('debug_recordings')
+vala_debug_args = []
+debug_core_sources = []
+debug_ui_sources = []
+if debug_recordings
+  vala_debug_args += ['--define=IBSO_DEBUG_RECORDINGS']
+  debug_core_sources += [
+    'src/debug/Recording.vala',
+    'src/debug/Feed.vala',
+    'src/debug/Replay.vala',
+  ]
+  debug_ui_sources += [
+    'src/debug/Dialog.vala',
+    'src/debug/HistoryItem.vala',
+    'src/debug/History.vala',
+    'src/debug/Stars.vala',
+  ]
+endif
+
 # rapidfuzz-cpp is header-only (cmake package; no .pc). Tiny C ABI for Vala.
 cpp = meson.get_compiler('cpp')
 rapidfuzz_inc = include_directories('src/vapi')
@@ -64,13 +84,10 @@ executable(
     'src/Capture.vala',
     'src/Session.vala',
     'src/PcmChunk.vala',
-    'src/debug/Recording.vala',
-    'src/debug/Feed.vala',
-    'src/debug/Replay.vala',
     'src/Config.vala',
     'src/Models.vala',
     catalog_resources,
-  ],
+  ] + debug_core_sources,
   dependencies: [
     glib_dep,
     gobject_dep,
@@ -85,7 +102,7 @@ executable(
   vala_args: [
     '--pkg=posix',
     '--pkg=rapidfuzz',
-  ],
+  ] + vala_debug_args,
   install: true,
   install_dir: get_option('libexecdir'),
 )
@@ -131,14 +148,11 @@ if get_option('cli')
       'src/Capture.vala',
       'src/Session.vala',
       'src/PcmChunk.vala',
-      'src/debug/Recording.vala',
-    'src/debug/Feed.vala',
-    'src/debug/Replay.vala',
       'src/EngineStub.vala',
       'src/Config.vala',
       'src/Models.vala',
       catalog_resources,
-    ],
+    ] + debug_core_sources,
     dependencies: [
       glib_dep,
       gobject_dep,
@@ -151,7 +165,7 @@ if get_option('cli')
     ],
     vala_args: [
       '--pkg=posix',
-    ],
+    ] + vala_debug_args,
     install: false,
   )
 endif
@@ -185,20 +199,13 @@ executable(
     'src/setup/RowComboLanguage.vala',
     'src/setup/ModelDownload.vala',
     'src/setup/Preferences.vala',
-    'src/debug/Dialog.vala',
-    'src/debug/HistoryItem.vala',
-    'src/debug/History.vala',
-    'src/debug/Stars.vala',
     'src/Transcriber.vala',
     'src/Capture.vala',
     'src/Session.vala',
     'src/PcmChunk.vala',
-    'src/debug/Recording.vala',
-    'src/debug/Feed.vala',
-    'src/debug/Replay.vala',
     'src/EngineStub.vala',
     catalog_resources,
-  ],
+  ] + debug_core_sources + debug_ui_sources,
   dependencies: [
     glib_dep,
     gobject_dep,
@@ -221,7 +228,7 @@ executable(
   vala_args: [
     '--pkg=posix',
     '--pkg=rapidfuzz',
-  ],
+  ] + vala_debug_args,
   install: true,
   install_dir: get_option('libexecdir'),
 )
@@ -258,14 +265,11 @@ if get_option('gtk_demo')
       'src/Capture.vala',
       'src/Session.vala',
       'src/PcmChunk.vala',
-      'src/debug/Recording.vala',
-    'src/debug/Feed.vala',
-    'src/debug/Replay.vala',
       'src/EngineStub.vala',
       'src/Config.vala',
       'src/Models.vala',
       catalog_resources,
-    ],
+    ] + debug_core_sources,
     dependencies: [
       glib_dep,
       gobject_dep,
@@ -280,7 +284,7 @@ if get_option('gtk_demo')
     ],
     vala_args: [
       '--pkg=posix',
-    ],
+    ] + vala_debug_args,
     install: false,
   )
 endif

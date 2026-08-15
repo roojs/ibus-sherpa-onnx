@@ -1,6 +1,6 @@
 # Prefs language combo: empty closed value + search resizes popover
 
-**Status:** ✅
+**Status:** ✅ DONE (0.3.2 language combo fix)
 
 
 **Reported from:** `ibus-setup-sherpa-onnx` → Select model → Language  

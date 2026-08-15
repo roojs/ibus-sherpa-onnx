@@ -19,7 +19,8 @@
 namespace IBSO.Setup
 {
 	/**
-	 * Preferences: General, Voice commands, and Debug tabs.
+	 * Preferences: General and Voice commands tabs
+	 * (Debug tab when built with ''-Ddebug_recordings=true'').
 	 * Standalone {@link Adw.Window} with {@link Adw.ViewStack} pages — RooTerm
 	 * ''Dialog.Preferences'' shell.
 	 *
@@ -37,7 +38,9 @@ namespace IBSO.Setup
 		private ModelDownload download;
 		private Gtk.Stack stack;
 		private Gtk.Button close_btn;
+#if IBSO_DEBUG_RECORDINGS
 		private Adw.ActionRow browse_row;
+#endif
 		private Gtk.Box prefs_view;
 		private Adw.ViewStack pages;
 		private Adw.Banner _banner;
@@ -109,6 +112,7 @@ namespace IBSO.Setup
 			this.add("voice-stop",
 				new RowMicText(this, this.config, "voice-stop", "Stop"), voice);
 
+#if IBSO_DEBUG_RECORDINGS
 			var debug_page = new Adw.PreferencesPage() {
 				title = "Debug",
 				icon_name = "applications-engineering-symbolic"
@@ -139,14 +143,17 @@ namespace IBSO.Setup
 				this.browse_row.visible =
 					((RowSwitch) this.rows.get("debug-recordings")).sw.active;
 			});
+#endif
 
 			this.pages = new Adw.ViewStack();
 			this.pages.add_titled_with_icon(general_page, "general", "General",
 				"preferences-system-symbolic");
 			this.pages.add_titled_with_icon(voice_page, "voice", "Voice commands",
 				"audio-input-microphone-symbolic");
+#if IBSO_DEBUG_RECORDINGS
 			this.pages.add_titled_with_icon(debug_page, "debug", "Debug",
 				"applications-engineering-symbolic");
+#endif
 
 			this._banner = new Adw.Banner("") {
 				revealed = false
@@ -291,8 +298,10 @@ namespace IBSO.Setup
 				row.config = this.config;
 				row.fill();
 			}
+#if IBSO_DEBUG_RECORDINGS
 			this.browse_row.visible =
 				((RowSwitch) this.rows.get("debug-recordings")).sw.active;
+#endif
 		}
 
 		private bool on_close_request()

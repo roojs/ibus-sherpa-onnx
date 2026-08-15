@@ -50,6 +50,18 @@ namespace IBSO
 		private bool output_mute_held = false;
 
 		/**
+		 * Trailing PCM quiet (sample count). Endpoint is ours — not sherpa
+		 * ''is_endpoint'' — so live and Replay share the same split rule.
+		 */
+		private int quiet_samples = 0;
+
+		/** Peak below this counts as definitive quiet (float PCM in [-1, 1]). */
+		private const float QUIET_FLOOR = 0.02f;
+
+		/** Commit after this much trailing quiet (~1.2 s at 16 kHz; band ~0.8–1.4). */
+		private const int QUIET_SAMPLES = (int) (1.2 * 16000);
+
+		/**
 		 * Mic appsink PCM handler. {@link Capture} sets this to {@link Capture.push}
 		 * so live mic shares the same path as Replay.
 		 */
@@ -149,10 +161,8 @@ namespace IBSO
 				},
 				decoding_method = "greedy_search",
 				blank_penalty = 0.8f,
-				enable_endpoint = 1,
-				rule1_min_trailing_silence = 2.4f,
-				rule2_min_trailing_silence = 1.2f,
-				rule3_min_utterance_length = 300.0f,
+				/* Line splits use {@link pcm_quiet_endpoint} on PCM, not model blanks. */
+				enable_endpoint = 0,
 			});
 			if (saved_stderr >= 0) {
 				Posix.dup2(saved_stderr, Posix.STDERR_FILENO);
@@ -212,6 +222,7 @@ namespace IBSO
 				}
 				this.hypothesis = "";
 				this.partial_updates = 0;
+				this.quiet_samples = 0;
 				this.segment_start_us = GLib.get_monotonic_time();
 				return;
 			}
@@ -223,6 +234,7 @@ namespace IBSO
 				}
 				this.hypothesis = "";
 				this.partial_updates = 0;
+				this.quiet_samples = 0;
 				return;
 			}
 
@@ -249,6 +261,7 @@ namespace IBSO
 				}
 				this.hypothesis = "";
 				this.partial_updates = 0;
+				this.quiet_samples = 0;
 				return;
 			}
 
@@ -276,7 +289,7 @@ namespace IBSO
 				});
 			}
 
-			if (this.recognizer.is_endpoint(this.stream) != 1) {
+			if (!this.pcm_quiet_endpoint(chunk.samples)) {
 				return;
 			}
 
@@ -287,6 +300,7 @@ namespace IBSO
 				}
 				this.hypothesis = "";
 				this.partial_updates = 0;
+				this.quiet_samples = 0;
 				this.segment_start_us = GLib.get_monotonic_time();
 				return;
 			}
@@ -316,7 +330,29 @@ namespace IBSO
 			}
 			this.hypothesis = "";
 			this.partial_updates = 0;
+			this.quiet_samples = 0;
 			this.segment_start_us = GLib.get_monotonic_time();
+		}
+
+		/**
+		 * Trailing quiet on PCM: peak below {@link QUIET_FLOOR} accumulates;
+		 * true after {@link QUIET_SAMPLES} (~1.2 s). Same audio ⇒ same splits.
+		 */
+		private bool pcm_quiet_endpoint(float[] samples)
+		{
+			var peak = 0.0f;
+			foreach (var s in samples) {
+				var a = s < 0.0f ? -s : s;
+				if (a > peak) {
+					peak = a;
+				}
+			}
+			if (peak >= QUIET_FLOOR) {
+				this.quiet_samples = 0;
+				return false;
+			}
+			this.quiet_samples += samples.length;
+			return this.quiet_samples >= QUIET_SAMPLES;
 		}
 
 		/**

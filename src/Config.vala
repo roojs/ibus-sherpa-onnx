@@ -80,7 +80,9 @@ namespace IBSO
 				config.key_file.set_boolean("general", "notifications", false);
 				config.key_file.set_boolean("general", "preedit-animation", true);
 				config.key_file.set_boolean("general", "mute-speakers", true);
+#if IBSO_DEBUG_RECORDINGS
 				config.key_file.set_boolean("general", "debug-recordings", false);
+#endif
 				config.key_file.set_boolean("general", "voice-commands", true);
 				config.key_file.set_string("general", "language", "en");
 			}
@@ -96,9 +98,11 @@ namespace IBSO
 			if (!config.key_file.has_key("general", "mute-speakers")) {
 				config.key_file.set_boolean("general", "mute-speakers", true);
 			}
+#if IBSO_DEBUG_RECORDINGS
 			if (!config.key_file.has_key("general", "debug-recordings")) {
 				config.key_file.set_boolean("general", "debug-recordings", false);
 			}
+#endif
 			if (!config.key_file.has_key("general", "voice-commands")) {
 				config.key_file.set_boolean("general", "voice-commands", true);
 			}
