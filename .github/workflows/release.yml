@@ -52,12 +52,13 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             build-essential debhelper devscripts fakeroot \
-            meson ninja-build pkg-config valac \
+            meson ninja-build pkg-config valac g++ \
             libglib2.0-dev libibus-1.0-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             libgtk-4-dev libadwaita-1-dev \
             libsoup-3.0-dev libjson-glib-dev libarchive-dev \
             libicu-dev libgee-0.8-dev \
+            libatspi2.0-dev librapidfuzz-cpp-dev \
             libonnxruntime-dev \
             gh
 
@@ -128,12 +129,13 @@ jobs:
           set -euo pipefail
           dnf -y install \
             rpm-build rpmdevtools chrpath \
-            meson ninja-build gcc pkgconf-pkg-config vala \
+            meson ninja-build gcc gcc-c++ pkgconf-pkg-config vala \
             glib2-devel ibus-devel \
             gstreamer1-devel gstreamer1-plugins-base-devel \
             gtk4-devel libadwaita-devel \
             libsoup3-devel json-glib-devel libarchive-devel \
-            libicu-devel libgee-devel
+            libicu-devel libgee-devel \
+            at-spi2-core-devel rapidfuzz-devel
 
       - name: Install libsherpa-onnx from roojs/sherpa-onnx release
         env:
