@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.4 - Unreleased
+
+- After Post / send (IBus `reset` while listening): stop the mic and
+  **discard** any unfinished partial instead of committing it back into the
+  emptied field.
+- Spoken drafts use `PREEDIT_CLEAR`; on focus-out the engine clears preedit
+  before IBus handles focus loss, so leftover text is not re-injected after
+  submit. Explicit mic-off (hotkey, panel, Escape / typing, voice-stop) still
+  commits the pending phrase.
+
 ## 0.3.3 - 2026-08-15
 
 - Utterance splits use our own PCM quiet detector (`pcm_quiet_endpoint`:

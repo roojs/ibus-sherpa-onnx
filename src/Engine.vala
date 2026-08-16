@@ -111,18 +111,19 @@ namespace IBSO
 				listening.to_string(), this.saw_partial.to_string(), this.has_focus.to_string(),
 				this.enabled.to_string(), this.engine_name ?? "");
 			/*
-			 * Spoken drafts use {@link IBus.PreeditFocusMode.COMMIT} — IBus
-			 * turns that buffer into real text on focus loss. Do not
-			 * commit_text again here (would double). Restart dots if still on.
+			 * Drop draft/dots with CLEAR before IBus focus-loss handling so
+			 * Post/send cannot get a leftover inject into an emptied field.
+			 * Mic stays on; restart dots after base.focus_out if still listening.
 			 */
-			var had_partial = this.saw_partial;
-			base.focus_out();
-			if (!listening || !had_partial) {
-				return;
+			if (listening) {
+				this.saw_partial = false;
+				this.stop_preedit_animation();
+				this.update_preedit_text_with_mode(new IBus.Text.from_string(""),
+					0, false, IBus.PreeditFocusMode.CLEAR);
+				this.hide_preedit_text();
 			}
-			this.saw_partial = false;
-			this.stop_preedit_animation();
-			if (this.transcriber.listening) {
+			base.focus_out();
+			if (listening && this.transcriber.listening) {
 				this.start_preedit_animation();
 			}
 		}
@@ -157,7 +158,8 @@ namespace IBSO
 		}
 
 		/**
-		 * Client reset (composition clear / focus churn): stop listening if on.
+		 * Client reset (composition clear / Post / focus churn): stop listening
+		 * if on, and discard any pending partial (do not commit into the field).
 		 */
 		public override void reset()
 		{
@@ -166,7 +168,7 @@ namespace IBSO
 				listening.to_string(), this.has_focus.to_string(), this.enabled.to_string(),
 				this.engine_name ?? "");
 			if (this.transcriber != null && this.transcriber.listening) {
-				this.update_listening(false, false);
+				this.update_listening(false, false, false);
 			}
 			base.reset();
 		}
@@ -386,9 +388,9 @@ namespace IBSO
 			}
 			this.saw_partial = true;
 			this.stop_preedit_animation();
-			/* COMMIT = on focus loss, IBus puts this draft into the text box. */
+			/* CLEAR = focus leave drops the draft (Post must not re-inject). */
 			this.update_preedit_text_with_mode(new IBus.Text.from_string(text),
-				(uint) text.length, true, IBus.PreeditFocusMode.COMMIT);
+				(uint) text.length, true, IBus.PreeditFocusMode.CLEAR);
 		}
 
 		/**
@@ -500,12 +502,14 @@ namespace IBSO
 
 		/**
 		 * Start or stop the mic. Stopping commits {@link Transcriber.last_text}
-		 * when a real partial was shown.
+		 * when a real partial was shown, unless ''commit_pending'' is false
+		 * (client {@link reset} / Post churn).
 		 *
 		 * @param listening desired mic state
 		 * @param notify emit the listening desktop notification
+		 * @param commit_pending when stopping, commit the last partial (default true)
 		 */
-		private void update_listening(bool listening, bool notify)
+		private void update_listening(bool listening, bool notify, bool commit_pending = true)
 		{
 			if (listening) {
 				this.ensure_transcriber();
@@ -526,8 +530,12 @@ namespace IBSO
 				return;
 			}
 
-			GLib.debug("listening OFF (has_focus=%s)", this.has_focus.to_string());
-			var pending = this.saw_partial ? this.transcriber.last_text : "";
+			GLib.debug("listening OFF (has_focus=%s commit_pending=%s)",
+				this.has_focus.to_string(), commit_pending.to_string());
+			var pending = "";
+			if (commit_pending && this.saw_partial) {
+				pending = this.transcriber.last_text;
+			}
 			this.transcriber.stop(pending);
 			this.stop_preedit_animation();
 			this.saw_partial = false;
