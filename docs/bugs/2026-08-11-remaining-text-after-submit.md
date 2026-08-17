@@ -1,68 +1,78 @@
-# Remaining text in the field after dictate + Post / button
+# Remaining text after submit vs wiped on play
 
-**Status:** ⏳ open — frequent in real use (2026-08-16)  
-**Reported:** 2026-08-11  
+**Status:** ✅ OLLMchat play soak (2026-08-17, attempt 3). ⏳ Leftover after Post still open — do not re-apply **B**. 
+**Reported:** 2026-08-11 (leftover after Post); play wipe 2026-08-17  
 **Package:** `ibus-sherpa-onnx` (post-0.3.2 local; still current)
 
 > Emoji legend: RooTerm `docs/guide-to-writing-plans.md`.  
 > Process: RooTerm `docs/bug-fix-process.md`.
 
-## Problem
+## Problem — two poles, one race
 
-- 🔷 While dictating into a text field, user often presses a **Post / send / action button**.
-- 🔷 After that, **leftover text remains in the input** (spoken fragment or preedit residue) more often than expected.
-- 🔷 Mic usually stops (client `reset`) — good — but something still **writes into the field after** the app cleared / submitted.
+Same session, same engine, opposite field outcomes. Toggling `PREEDIT_COMMIT` vs `PREEDIT_CLEAR` on focus leave just swaps which pole we hit. This log is the paper trail so we do not re-apply a pole we already tried.
 
-## Mechanism (two inject paths)
+### Leftover after Post (🔷 2026-08-11)
 
-Post / send typically does some mix of: read field → clear → `reset` IC → move focus (button).
+- 🔷 While dictating, user presses **Post / send**.
+- 🔷 Mic stops (client `reset`) — good.
+- 🔷 Spoken fragment / preedit residue is **written back** into the emptied field.
 
-1. **`focus_out` + `PREEDIT_COMMIT`**  
-   Spoken drafts are published with `PreeditFocusMode.COMMIT`. On focus leave, IBus itself turns that draft into committed text in the widget. If the app already cleared the field for Post, that auto-commit **re-fills** it.
+### Wiped on play (🔷 2026-08-17)
 
-2. **`reset` → stop → `commit_text`**  
-   `Engine.reset` still calls `update_listening(false)`, which **commits** `pending` when `saw_partial`:
+- 🔷 OLLMchat: enter/dictate text, click **play** (send).
+- 🔷 Composer should still hold the draft when `ChatInput.text()` runs (app clears **after** a successful send).
+- 🔷 Actual: composer **empties**; `text().length == 0`; send does not fire.
+- ✅ Attempt 3 soak (2026-08-17): play keeps the draft / send works. User: “fixed it for now.”
 
-```vala
-if (this.transcriber != null && this.transcriber.listening) {
-    this.update_listening(false, false);
-}
-base.reset();
-```
+## Why they fight
 
-   If `reset` runs while `saw_partial` is still true (before `focus_out` cleared it), we inject again after clear.
+- ℹ️ Spoken text lives in IBus **preedit** until endpoint / `commit_text` / focus-loss COMMIT.
+- ℹ️ OLLMchat play is send. GTK4 `gtk_text_view_focus_out` calls `gtk_im_context_focus_out` on **mouse-press**. `ChatInput.clicked` reads the buffer on **mouse-release**. `reset` is deferred (`need_im_reset`) until a later buffer change.
+- 🔷 We cannot see “this leave is Post” vs “this leave is play”.
+- ℹ️ Client `reset` is still the closest “composition done” signal — but it runs **after** play needed the draft.
+- ℹ️ `PREEDIT_COMMIT` on focus leave: play keeps the draft (IBus commits into the widget before `clicked`); Post can re-fill after the app cleared.
+- ℹ️ `PREEDIT_CLEAR` on focus leave: no IBus auto-commit after Post; play **wipes** the draft before `clicked`.
+- ℹ️ `reset` → `commit_text(pending)`: leftover if the app already cleared.
+- ℹ️ `reset` → discard, no `commit_text`: no second inject after Post; does **not** save play, because `focus_out` already ran.
 
-Either path alone can leave residue; together they race with the app’s clear.
+## Attempts — do not repeat
 
-Related closed bug: [`2026-08-11-DONE-preedit-cleared-on-focus-out.md`](2026-08-11-DONE-preedit-cleared-on-focus-out.md) — we added COMMIT to stop *losing* drafts on focus leave. That fix fights Post leftover.
+### 1. `PREEDIT_COMMIT` on spoken drafts (2026-08-11)
 
-## Product tension
+- ✔️ Shipped to stop losing mid-phrase on focus leave.
+- ℹ️ Log: [`2026-08-11-DONE-preedit-cleared-on-focus-out.md`](2026-08-11-DONE-preedit-cleared-on-focus-out.md).
+- ✔️ Closed 2026-08-16 as “almost never” — **wrong for OLLMchat play** (see soak below).
+- 🔷 User then reported leftover after Post (this file).
 
-| Goal | Behaviour |
-|------|-----------|
-| Don’t lose mid-phrase when clicking away | Keep / use `PREEDIT_COMMIT` |
-| Don’t leave crumbs after Post | Don’t inject on focus leave / `reset` |
+### 2. A+B (✔️ applied 2026-08-16)
 
-We cannot see “this focus leave is a Post” vs “user clicked another widget”. Client `reset` is the closest “composition done / submit churn” signal IBus gives us.
+- 🔷 **A:** On `reset`, stop listening and **discard** pending — no `commit_text`. Explicit mic-off still commits.
+- 🔷 **B:** Partials use `PREEDIT_CLEAR`. `focus_out` empties preedit with CLEAR **before** `base.focus_out()`.
+- ✔️ In tree: `update_listening(..., commit_pending)`; `reset` passes `false`.
+- 🔷 Soak 2026-08-17 **failed** on OLLMchat play (wipe).
 
-## Proposed fix (needs approval)
+### Soak evidence (2026-08-17)
 
-**A+B (✔️ applied 2026-08-16):**
+- ℹ️ `~/.cache/ibus-sherpa-onnx/ibus-sherpa-onnx.debug.log` 08:25:21:
+  - `focus_out: listening=true saw_partial=true` — **B** CLEARs the draft here (mouse-press).
+  - ~800 ms later `reset: listening=true` → `listening OFF (commit_pending=false)` — **A**, after play already saw empty.
 
-**A:** On `reset`, **stop listening and discard** pending — clear/hide preedit, **no** `commit_text`. Keep commit-on-stop for explicit mic-off (hotkey, panel, voice-stop, Escape / typing interrupt).
+### 3. Focus-out COMMIT, then CLEAR (🔷 2026-08-17)
 
-**B:** Spoken drafts use `PREEDIT_CLEAR`; on `focus_out` while listening, empty preedit with `CLEAR` before `base.focus_out()` so IBus does not auto-commit. Accept rare mid-phrase vanish on accidental focus leave.
+- 🔷 User: commit on `focus_out`, **then** clear — do not CLEAR first.
+- ✔️ Applied: partials use `PREEDIT_COMMIT`. `focus_out` calls `base.focus_out()` first (IBus commits the draft into the widget). Then empty preedit with CLEAR / hide / `saw_partial = false`.
+- ✔️ **A stays:** `reset` still discards (no `commit_text`). That is the “then clear” after play has read the buffer.
+- ℹ️ GTK order already matches: mouse-press `focus_out` → mouse-release `clicked` → later `reset`.
+- ℹ️ Expected play: press → COMMIT into buffer → CLEAR preedit → release → `text()` non-empty → send → app `update_entry("")` → `reset` discards.
+- ℹ️ Expected Post: same COMMIT-then-CLEAR on leave; `reset` must not inject a second copy. Leftover can still return if the app **clears the field before** `focus_out` COMMIT lands — do not “fix” that by putting CLEAR **before** `base.focus_out()` (attempt 2 / play wipe).
 
-🚫 Do not try to detect “Post” per app.  
-🚫 Do not keep listening across `reset` (already abandoned in 0.6 Phase A).
+🚫 Detect Post vs play per app.  
+🚫 Keep listening across `reset` (abandoned in 0.6 Phase A).  
+🚫 Re-apply **B** (CLEAR preedit **before** `base.focus_out()`) — that is the play wipe.  
+🚫 Close focus-out loss as wont-pursue again without a soak on OLLMchat play.
 
 ## Next
 
-- ✔️ A+B chosen (2026-08-16).
-- ✔️ Implemented: `update_listening(..., commit_pending)`; `reset` passes false; `focus_out` clears with `PREEDIT_CLEAR`; partials use `CLEAR`.
-- ⏳ Soak: dictate → Post while still listening (partial on screen) — field should stay empty after send; mic off.
-
-## Attempts
-
-- (none yet — log opened from user report; mechanism clarified 2026-08-16)
-- ✔️ A+B in `Engine.vala` (2026-08-16) — awaiting user soak
+- ✔️ A+B in `Engine.vala` (2026-08-16) — soak failed on play.
+- ✔️ Attempt 3 in `Engine.vala` (2026-08-17) — COMMIT then CLEAR; `reset` discards.
+- 🔷 `⏳` Soak play (draft sends; field empties because the app sent) **and** dictate → Post (no leftover inject).

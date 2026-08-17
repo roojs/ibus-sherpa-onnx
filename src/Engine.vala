@@ -111,19 +111,21 @@ namespace IBSO
 				listening.to_string(), this.saw_partial.to_string(), this.has_focus.to_string(),
 				this.enabled.to_string(), this.engine_name ?? "");
 			/*
-			 * Drop draft/dots with CLEAR before IBus focus-loss handling so
-			 * Post/send cannot get a leftover inject into an emptied field.
-			 * Mic stays on; restart dots after base.focus_out if still listening.
+			 * COMMIT first (IBus puts the draft in the widget — play/send can
+			 * read it), then clear our preedit so reset cannot inject again.
+			 * Do not commit_text here (would double). Restart dots if still on.
 			 */
-			if (listening) {
-				this.saw_partial = false;
-				this.stop_preedit_animation();
-				this.update_preedit_text_with_mode(new IBus.Text.from_string(""),
-					0, false, IBus.PreeditFocusMode.CLEAR);
-				this.hide_preedit_text();
-			}
+			var had_partial = this.saw_partial;
 			base.focus_out();
-			if (listening && this.transcriber.listening) {
+			if (!listening || !had_partial) {
+				return;
+			}
+			this.saw_partial = false;
+			this.stop_preedit_animation();
+			this.update_preedit_text_with_mode(new IBus.Text.from_string(""),
+				0, false, IBus.PreeditFocusMode.CLEAR);
+			this.hide_preedit_text();
+			if (this.transcriber.listening) {
 				this.start_preedit_animation();
 			}
 		}
@@ -388,9 +390,9 @@ namespace IBSO
 			}
 			this.saw_partial = true;
 			this.stop_preedit_animation();
-			/* CLEAR = focus leave drops the draft (Post must not re-inject). */
+			/* COMMIT = on focus loss, IBus puts this draft into the text box. */
 			this.update_preedit_text_with_mode(new IBus.Text.from_string(text),
-				(uint) text.length, true, IBus.PreeditFocusMode.CLEAR);
+				(uint) text.length, true, IBus.PreeditFocusMode.COMMIT);
 		}
 
 		/**
