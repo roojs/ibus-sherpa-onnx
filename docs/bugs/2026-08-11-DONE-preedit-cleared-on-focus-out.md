@@ -23,5 +23,5 @@
 
 - Mid-phrase loss on focus leave was real; COMMIT mode largely fixed it.
 - ✔️ Closed 2026-08-16: residual cases are rare enough not to chase.
-- 🔷 2026-08-17: **not rare** — OLLMchat play wipes the draft when **B** (`PREEDIT_CLEAR` on focus leave) is on. Tracked in [`2026-08-11-remaining-text-after-submit.md`](2026-08-11-remaining-text-after-submit.md). Do not re-close this as wont-pursue without a play soak.
+- 🔷 2026-08-17: **B** (`PREEDIT_CLEAR` before `focus_out`) wiped OLLMchat play. Attempt 3 (COMMIT then CLEAR) — ✅ play soak. Still tracked in [`2026-08-11-remaining-text-after-submit.md`](2026-08-11-remaining-text-after-submit.md) for leftover after Post.
 - Related opposite symptom (leftover after Post): same remaining-text log — still open; COMMIT-on-focus-loss may contribute.

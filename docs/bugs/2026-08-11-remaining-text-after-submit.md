@@ -65,6 +65,7 @@ Same session, same engine, opposite field outcomes. Toggling `PREEDIT_COMMIT` vs
 - ℹ️ GTK order already matches: mouse-press `focus_out` → mouse-release `clicked` → later `reset`.
 - ℹ️ Expected play: press → COMMIT into buffer → CLEAR preedit → release → `text()` non-empty → send → app `update_entry("")` → `reset` discards.
 - ℹ️ Expected Post: same COMMIT-then-CLEAR on leave; `reset` must not inject a second copy. Leftover can still return if the app **clears the field before** `focus_out` COMMIT lands — do not “fix” that by putting CLEAR **before** `base.focus_out()` (attempt 2 / play wipe).
+- ✅ Play pole verified (2026-08-17).
 
 🚫 Detect Post vs play per app.  
 🚫 Keep listening across `reset` (abandoned in 0.6 Phase A).  
@@ -75,4 +76,5 @@ Same session, same engine, opposite field outcomes. Toggling `PREEDIT_COMMIT` vs
 
 - ✔️ A+B in `Engine.vala` (2026-08-16) — soak failed on play.
 - ✔️ Attempt 3 in `Engine.vala` (2026-08-17) — COMMIT then CLEAR; `reset` discards.
-- 🔷 `⏳` Soak play (draft sends; field empties because the app sent) **and** dictate → Post (no leftover inject).
+- ✅ OLLMchat play soak (2026-08-17).
+- 🔷 `⏳` Dictate → Post: field stays empty (no leftover inject). Do not “fix” leftover by re-applying **B**.
