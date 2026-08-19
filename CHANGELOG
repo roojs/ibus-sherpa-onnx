@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.4 - Unreleased
+## 0.3.4 - 2026-08-19
 
 - Spoken drafts use `PREEDIT_COMMIT` on focus-out (play/send can read the
   draft), then the engine **clears** preedit. Later IBus `reset` stops the

@@ -4,7 +4,7 @@
 # https://github.com/roojs/sherpa-onnx/releases
 
 Name:           ibus-sherpa-onnx
-Version:        0.3.3
+Version:        0.3.4
 Release:        1%{?dist}
 Summary:        IBus speech dictation engine using sherpa-onnx
 License:        LGPLv3+
@@ -90,6 +90,9 @@ fi
 %{_datadir}/polkit-1/actions/org.roojs.ibus-sherpa-onnx.policy
 
 %changelog
+* Wed Aug 19 2026 Alan Knowles <alan@roojs.com> - 0.3.4-1
+- Focus-out PREEDIT_COMMIT then clear; reset discards leftover partial.
+
 * Sat Aug 15 2026 Alan Knowles <alan@roojs.com> - 0.3.3-1
 - PCM quiet endpoint chopper; debug recordings compile-optional.
 

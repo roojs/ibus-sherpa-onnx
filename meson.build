@@ -1,7 +1,7 @@
 project(
   'ibus-sherpa-onnx',
   ['c', 'cpp', 'vala'],
-  version: '0.3.3',
+  version: '0.3.4',
   meson_version: '>= 1.0.0',
   default_options: [
     'warning_level=1',
