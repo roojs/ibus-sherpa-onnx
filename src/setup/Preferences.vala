@@ -19,7 +19,7 @@
 namespace IBSO.Setup
 {
 	/**
-	 * Preferences: General and Voice commands tabs
+	 * Preferences: General, Voice commands, and About tabs
 	 * (Debug tab when built with ''-Ddebug_recordings=true'').
 	 * Standalone {@link Adw.Window} with {@link Adw.ViewStack} pages — RooTerm
 	 * ''Dialog.Preferences'' shell.
@@ -112,6 +112,83 @@ namespace IBSO.Setup
 			this.add("voice-stop",
 				new RowMicText(this, this.config, "voice-stop", "Stop"), voice);
 
+			var about_links = new Adw.PreferencesGroup() {
+				description = "© 2026 Alan Knowles"
+			};
+			var website = new Adw.ActionRow() {
+				title = "Website",
+				subtitle = "github.com/roojs/ibus-sherpa-onnx",
+				activatable = true
+			};
+			website.add_suffix(new Gtk.Image.from_icon_name("adw-external-link-symbolic"));
+			website.activated.connect(() => {
+				var launcher = new Gtk.UriLauncher("https://github.com/roojs/ibus-sherpa-onnx");
+				launcher.launch.begin(this, null, (obj, res) => {
+					try {
+						launcher.launch.end(res);
+					} catch (GLib.Error err) {
+						GLib.warning("%s", err.message);
+					}
+				});
+			});
+			about_links.add(website);
+			var issues = new Adw.ActionRow() {
+				title = "Report an Issue",
+				activatable = true
+			};
+			issues.add_suffix(new Gtk.Image.from_icon_name("adw-external-link-symbolic"));
+			issues.activated.connect(() => {
+				var launcher = new Gtk.UriLauncher("https://github.com/roojs/ibus-sherpa-onnx/issues");
+				launcher.launch.begin(this, null, (obj, res) => {
+					try {
+						launcher.launch.end(res);
+					} catch (GLib.Error err) {
+						GLib.warning("%s", err.message);
+					}
+				});
+			});
+			about_links.add(issues);
+			var license = new Adw.ActionRow() {
+				title = "License",
+				subtitle = "GNU LGPL version 3 or later",
+				activatable = true
+			};
+			license.add_suffix(new Gtk.Image.from_icon_name("adw-external-link-symbolic"));
+			license.activated.connect(() => {
+				var launcher = new Gtk.UriLauncher("https://www.gnu.org/licenses/lgpl-3.0.html");
+				launcher.launch.begin(this, null, (obj, res) => {
+					try {
+						launcher.launch.end(res);
+					} catch (GLib.Error err) {
+						GLib.warning("%s", err.message);
+					}
+				});
+			});
+			about_links.add(license);
+			var version = new Gtk.Button.with_label(IBSO.VERSION) {
+				halign = Gtk.Align.CENTER
+			};
+			version.add_css_class("pill");
+			version.clicked.connect(() => {
+				this.get_clipboard().set_text(IBSO.VERSION);
+				this.banner("Copied version " + IBSO.VERSION);
+			});
+			var about_extra = new Gtk.Box(Gtk.Orientation.VERTICAL, 18) {
+				halign = Gtk.Align.CENTER
+			};
+			about_extra.append(version);
+			about_extra.append(new Gtk.Label("Local speech-to-text dictation") {
+				wrap = true,
+				justify = Gtk.Justification.CENTER
+			});
+			about_extra.append(about_links);
+			var about_page = new Adw.StatusPage() {
+				icon_name = "audio-input-microphone",
+				title = "Sherpa ONNX",
+				description = "Alan Knowles",
+				child = about_extra
+			};
+
 #if IBSO_DEBUG_RECORDINGS
 			var debug_page = new Adw.PreferencesPage() {
 				title = "Debug",
@@ -154,6 +231,8 @@ namespace IBSO.Setup
 			this.pages.add_titled_with_icon(debug_page, "debug", "Debug",
 				"applications-engineering-symbolic");
 #endif
+			this.pages.add_titled_with_icon(about_page, "about", "About",
+				"help-about-symbolic");
 
 			this._banner = new Adw.Banner("") {
 				revealed = false
@@ -280,7 +359,11 @@ namespace IBSO.Setup
 				this.engine_ready = (id == "sherpa-onnx" || id.has_prefix("sherpa-onnx-"));
 			}
 			this.banner("");
-			this.prefs_view.sensitive = this.engine_ready;
+			this.pages.get_child_by_name("general").sensitive = this.engine_ready;
+			this.pages.get_child_by_name("voice").sensitive = this.engine_ready;
+#if IBSO_DEBUG_RECORDINGS
+			this.pages.get_child_by_name("debug").sensitive = this.engine_ready;
+#endif
 
 			if (id == "sherpa-onnx") {
 				this.config.key_file.set_string("general", "language", "en");

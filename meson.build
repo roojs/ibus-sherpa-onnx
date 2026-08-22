@@ -1,7 +1,7 @@
 project(
   'ibus-sherpa-onnx',
   ['c', 'cpp', 'vala'],
-  version: '0.3.4',
+  version: '0.3.5',
   meson_version: '>= 1.0.0',
   default_options: [
     'warning_level=1',
@@ -26,6 +26,14 @@ catalog_resources = gnome.compile_resources(
   'resources/gresources.xml',
   source_dir: 'resources',
   c_name: 'ibus_sherpa_onnx_resources',
+)
+
+version_conf = configuration_data()
+version_conf.set('VERSION', meson.project_version())
+version_vala = configure_file(
+  input: 'src/Version.vala.in',
+  output: 'Version.vala',
+  configuration: version_conf,
 )
 
 # Hand-written bindings: src/vapi/*.vapi (sherpa-onnx, icu-uc, rapidfuzz).
@@ -199,6 +207,7 @@ executable(
     'src/setup/RowComboLanguage.vala',
     'src/setup/ModelDownload.vala',
     'src/setup/Preferences.vala',
+    version_vala,
     'src/Transcriber.vala',
     'src/Capture.vala',
     'src/Session.vala',

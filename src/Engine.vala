@@ -41,7 +41,13 @@ namespace IBSO
 		/** Parsed toggle modifiers from config ''general/hotkey''. */
 		public static uint toggle_mods = 0;
 
-		/** Recognizer + mic for this engine instance (null if no pack installed). */
+		/**
+		 * Process-wide recognizer + mic (IBus constructs one {@link Engine} per
+		 * text field; they all use this). Null if no pack is installed.
+		 */
+		private static Capture? shared;
+
+		/** {@link shared} for this context (null if this language has no pack). */
 		private Capture? transcriber;
 
 		private IBus.Property prop;
@@ -327,9 +333,6 @@ namespace IBSO
 				}
 			}
 			if (pack == "" || model_dir == "") {
-				if (this.transcriber != null && this.transcriber.listening) {
-					this.transcriber.stop();
-				}
 				this.transcriber = null;
 				if (this.notified_missing_lang != this.language) {
 					this.notified_missing_lang = this.language;
@@ -337,6 +340,7 @@ namespace IBSO
 				}
 				return;
 			}
+			this.transcriber = Engine.shared;
 			if (this.transcriber != null && this.transcriber.pack == pack) {
 				this.transcriber.config = Engine.config;
 				return;
@@ -348,8 +352,12 @@ namespace IBSO
 				note.set_body("Loading speech model (" + this.language + ")...");
 				app.send_notification("sherpa-onnx-loading", note);
 			}
-			if (this.transcriber != null && this.transcriber.listening) {
-				this.transcriber.stop();
+			if (Engine.shared != null) {
+				if (Engine.shared.listening) {
+					Engine.shared.stop();
+				}
+				Engine.shared.dispose();
+				Engine.shared = null;
 			}
 			this.transcriber = null;
 			try {
@@ -366,6 +374,7 @@ namespace IBSO
 					pack = pack
 				};
 				t.load();
+				Engine.shared = t;
 				this.transcriber = t;
 			} catch (GLib.Error err) {
 				GLib.critical("%s", err.message);
@@ -524,6 +533,7 @@ namespace IBSO
 			}
 			if (listening) {
 				GLib.debug("listening ON (has_focus=%s)", this.has_focus.to_string());
+				this.transcriber.engine = this;
 				this.transcriber.start();
 				this.update_ui();
 				if (notify) {

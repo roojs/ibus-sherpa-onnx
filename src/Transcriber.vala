@@ -38,6 +38,7 @@ namespace IBSO
 		private SherpaOnnx.OnlineStream stream;
 		private Gst.Pipeline pipeline;
 		private GLib.AsyncQueue<PcmChunk> audio_queue;
+		private GLib.Thread<void>? worker;
 		private bool worker_running = false;
 		/** Worker-only current hypothesis (main reads {@link last_text} via Idle). */
 		private string hypothesis = "";
@@ -79,8 +80,11 @@ namespace IBSO
 		/** Prefs (''mute-speakers'', …); refreshed on focus. */
 		public Config config { get; set construct; }
 
-		/** Owning engine (IBus or CLI/GTK stub). */
-		public unowned Engine engine { get; construct; }
+		/**
+		 * Engine that owns preedit / commit for the current listen (IBus
+		 * retargets this when that context starts the mic).
+		 */
+		public unowned Engine engine { get; set construct; }
 
 		/** True while the capture pipeline is PLAYING. */
 		public bool listening { get; private set; default = false; }
@@ -197,11 +201,24 @@ namespace IBSO
 			});
 
 			this.worker_running = true;
-			new GLib.Thread<void>("sherpa-asr", () => {
+			this.worker = new GLib.Thread<void>("sherpa-asr", () => {
 				while (this.worker_running) {
 					this.processing_loop();
 				}
 			});
+		}
+
+		public override void dispose()
+		{
+			this.worker_running = false;
+			if (this.worker != null) {
+				this.worker.join();
+				this.worker = null;
+			}
+			if (this.pipeline != null) {
+				this.pipeline.set_state(Gst.State.NULL);
+			}
+			base.dispose();
 		}
 
 		/**

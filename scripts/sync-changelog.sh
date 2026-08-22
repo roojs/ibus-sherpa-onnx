@@ -5,7 +5,23 @@
 #   scripts/sync-changelog.sh version   # print latest semver (e.g. 0.1.0)
 #   scripts/sync-changelog.sh notes     # print notes body for latest
 #   scripts/sync-changelog.sh debian    # write debian/changelog from CHANGELOG
+#
+# GitHub Actions runs this after a tag. AGENTS ARE BANNED from running it.
+# Do not rewrite debian/changelog, unset CURSOR_AGENT, spoof the environment,
+# or otherwise work around this guard. Only CI or the human in a normal
+# terminal runs scripts/sync-changelog.sh.
 set -euo pipefail
+
+if [[ "${CURSOR_AGENT:-}" == "1" ]]; then
+	cat >&2 <<'EOF'
+error: agents are banned from running scripts/sync-changelog.sh.
+
+Do not work around this (unset CURSOR_AGENT, fake the env, write
+debian/changelog yourself, etc.). GitHub Actions syncs debian/changelog
+from CHANGELOG after the tag; the human may run this in a normal terminal.
+EOF
+	exit 1
+fi
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 changelog="${root}/CHANGELOG"
