@@ -1,0 +1,5 @@
+namespace IBSO
+{
+	/** meson.project_version. */
+	public const string VERSION = "@VERSION@";
+}
